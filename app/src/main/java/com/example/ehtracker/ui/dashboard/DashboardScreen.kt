@@ -1,0 +1,406 @@
+package com.example.ehtracker.ui.dashboard
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.dp
+import com.example.ehtracker.data.model.Currency
+import com.example.ehtracker.ui.analytics.AiInsight
+import com.example.ehtracker.ui.analytics.InsightType
+import com.example.ehtracker.ui.components.AiInsightsCard
+import com.example.ehtracker.ui.components.ExpenseSummaryCard
+import com.example.ehtracker.ui.components.HabitStreakRow
+import com.example.ehtracker.ui.components.SavingsCard
+import com.example.ehtracker.ui.components.ShimmerBox
+import com.example.ehtracker.ui.components.ShimmerCard
+import com.example.ehtracker.ui.components.ShimmerHabitRow
+import com.example.ehtracker.ui.components.ShimmerExpenseRow
+import com.example.ehtracker.ui.components.ShimmerInsightRow
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DashboardScreen(
+    viewModel: DashboardViewModel
+) {
+    val habits by viewModel.habits.collectAsState()
+    val todayTotal by viewModel.todayTotal.collectAsState()
+    val weekTotal by viewModel.weekTotal.collectAsState()
+    val monthTotal by viewModel.monthTotal.collectAsState()
+    val savings by viewModel.savings.collectAsState()
+    val totalExpenses by viewModel.totalExpenses.collectAsState()
+    val totalIncome by viewModel.totalIncome.collectAsState()
+    val currentBalance by viewModel.currentBalance.collectAsState()
+    val currency by viewModel.currency.collectAsState()
+    val showEditSavings by viewModel.showEditSavings.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
+    val sym = currency.symbol
+
+    val today = LocalDate.now()
+    val greeting = when (today.dayOfWeek.value) {
+        1 -> "Monday"
+        2 -> "Tuesday"
+        3 -> "Wednesday"
+        4 -> "Thursday"
+        5 -> "Friday"
+        6 -> "Saturday"
+        7 -> "Sunday"
+        else -> ""
+    }
+
+    Scaffold(
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = { viewModel.showAdd() },
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary
+            ) {
+                Icon(Icons.Filled.Add, contentDescription = "Add")
+            }
+        }
+    ) { padding ->
+        if (isLoading) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+            ) {
+                ShimmerBox(
+                    modifier = Modifier
+                        .fillMaxWidth(0.4f)
+                        .height(28.dp)
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                ShimmerBox(
+                    modifier = Modifier
+                        .fillMaxWidth(0.3f)
+                        .height(14.dp)
+                )
+                Spacer(modifier = Modifier.height(20.dp))
+                ShimmerCard()
+                Spacer(modifier = Modifier.height(20.dp))
+                ShimmerBox(
+                    modifier = Modifier
+                        .fillMaxWidth(0.2f)
+                        .height(14.dp)
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                ShimmerHabitRow()
+                ShimmerHabitRow()
+                Spacer(modifier = Modifier.height(20.dp))
+                ShimmerCard()
+                Spacer(modifier = Modifier.height(20.dp))
+                ShimmerInsightRow()
+                ShimmerInsightRow()
+                ShimmerInsightRow()
+            }
+        } else {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = greeting,
+                        style = MaterialTheme.typography.displayLarge.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                    Text(
+                        text = today.format(DateTimeFormatter.ofPattern("MMM d, yyyy")),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            SavingsCard(
+                savings = savings,
+                totalExpenses = totalExpenses,
+                totalIncome = totalIncome,
+                currentBalance = currentBalance,
+                currencySymbol = sym
+            )
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            Text(
+                text = "Habits",
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+            if (habits.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.surface)
+                        .padding(vertical = 24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "No habits yet — tap + to add your first",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            } else {
+                HabitStreakRow(
+                    habits = habits,
+                    onToggle = { habitId, date -> viewModel.toggleHabit(habitId, date) }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            if (todayTotal > 0 || weekTotal > 0 || monthTotal > 0) {
+                ExpenseSummaryCard(
+                    todayTotal = todayTotal,
+                    weekTotal = weekTotal,
+                    monthTotal = monthTotal,
+                    currencySymbol = sym
+                )
+            } else {
+                Text(
+                    text = "Expenses",
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.surface)
+                        .padding(vertical = 24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "No expenses logged yet",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            Text(
+                text = "Insights",
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+            AiInsightsCard(
+                insights = listOf(
+                    AiInsight(
+                        "You spent $sym${"%.0f".format(todayTotal)} today.",
+                        InsightType.SAVING
+                    ),
+                    AiInsight(
+                        "You have $sym${"%.0f".format(currentBalance)} remaining from your savings.",
+                        if (currentBalance >= 0) InsightType.TIP else InsightType.WARNING
+                    )
+                )
+            )
+
+            Spacer(modifier = Modifier.height(80.dp))
+        }
+        }
+    }
+
+    if (showEditSavings) {
+        EditSavingsSheet(
+            currentSavings = savings,
+            currentCurrency = currency,
+            onDismiss = { viewModel.dismissEditSavings() },
+            onSave = { viewModel.setSavings(it) },
+            onCurrencyChange = { viewModel.setCurrency(it) }
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun EditSavingsSheet(
+    currentSavings: Double,
+    currentCurrency: Currency,
+    onDismiss: () -> Unit,
+    onSave: (Double) -> Unit,
+    onCurrencyChange: (Currency) -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var amount by remember {
+        mutableStateOf(if (currentSavings > 0) "%.2f".format(currentSavings) else "")
+    }
+    var selectedCurrency by remember { mutableStateOf(currentCurrency) }
+    var currencyExpanded by remember { mutableStateOf(false) }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 32.dp)
+        ) {
+            Text(
+                text = "Settings",
+                style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onSurface
+            )
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // Total Savings (arriba)
+            OutlinedTextField(
+                value = amount,
+                onValueChange = { amount = it.filter { c -> c.isDigit() || c == '.' } },
+                label = { Text("Total Savings") },
+                prefix = { Text(selectedCurrency.symbol) },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                singleLine = true,
+                shape = RoundedCornerShape(8.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outline
+                ),
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Currency dropdown (abajo, compacto)
+            ExposedDropdownMenuBox(
+                expanded = currencyExpanded,
+                onExpandedChange = { currencyExpanded = it }
+            ) {
+                OutlinedTextField(
+                    value = "${selectedCurrency.symbol}  ${selectedCurrency.displayName} (${selectedCurrency.code})",
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Currency") },
+                    trailingIcon = {
+                        ExposedDropdownMenuDefaults.TrailingIcon(expanded = currencyExpanded)
+                    },
+                    shape = RoundedCornerShape(8.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outline
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .menuAnchor(androidx.compose.material3.ExposedDropdownMenuAnchorType.PrimaryNotEditable)
+                )
+                ExposedDropdownMenu(
+                    expanded = currencyExpanded,
+                    onDismissRequest = { currencyExpanded = false }
+                ) {
+                    Currency.entries.forEach { currency ->
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    text = "${currency.symbol}  ${currency.displayName}",
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            },
+                            trailingIcon = {
+                                Text(
+                                    text = currency.code,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            },
+                            onClick = {
+                                selectedCurrency = currency
+                                onCurrencyChange(currency)
+                                currencyExpanded = false
+                            }
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                TextButton(onClick = onDismiss) {
+                    Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                TextButton(
+                    onClick = {
+                        val parsed = amount.toDoubleOrNull()
+                        if (parsed != null && parsed >= 0) {
+                            onSave(parsed)
+                        }
+                    },
+                    enabled = amount.toDoubleOrNull() != null && (amount.toDoubleOrNull() ?: -1.0) >= 0
+                ) {
+                    Text("Save", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
+    }
+}
