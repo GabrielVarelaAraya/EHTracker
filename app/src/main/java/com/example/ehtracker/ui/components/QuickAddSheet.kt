@@ -22,10 +22,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.SecondaryTabRow
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
-import androidx.compose.material3.TabRowDefaults
-import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -43,6 +41,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.example.ehtracker.data.model.ExpenseCategory
+import com.example.ehtracker.data.model.HabitIcons
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
@@ -51,9 +50,10 @@ import java.time.format.DateTimeFormatter
 fun QuickAddSheet(
     onDismiss: () -> Unit,
     onAddExpense: (Double, ExpenseCategory, String, LocalDate) -> Unit,
-    onAddIncome: (Double, String) -> Unit,
-    onAddHabit: (String, String) -> Unit,
-    currencySymbol: String = "$"
+    onAddIncome: (Double, String, LocalDate) -> Unit,
+    onAddHabit: (String, String, Int) -> Unit,
+    currencySymbol: String = "$",
+    lastExpenseAmount: Double = 0.0
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var selectedTab by remember { mutableIntStateOf(0) }
@@ -70,19 +70,8 @@ fun QuickAddSheet(
                 .fillMaxWidth()
                 .padding(bottom = 32.dp)
         ) {
-            TabRow(
+            SecondaryTabRow(
                 selectedTabIndex = selectedTab,
-                containerColor = MaterialTheme.colorScheme.surface,
-                contentColor = MaterialTheme.colorScheme.primary,
-                indicator = { tabPositions ->
-                    if (selectedTab < tabPositions.size) {
-                        TabRowDefaults.SecondaryIndicator(
-                            modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
-                            height = 2.dp,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                },
                 divider = {}
             ) {
                 tabs.forEachIndexed { index, title ->
@@ -104,7 +93,7 @@ fun QuickAddSheet(
             }
 
             when (selectedTab) {
-                0 -> ExpenseTabContent(onAdd = onAddExpense, onDismiss = onDismiss, currencySymbol = currencySymbol)
+                0 -> ExpenseTabContent(onAdd = onAddExpense, onDismiss = onDismiss, currencySymbol = currencySymbol, lastAmount = lastExpenseAmount)
                 1 -> IncomeTabContent(onAdd = onAddIncome, onDismiss = onDismiss, currencySymbol = currencySymbol)
                 2 -> HabitTabContent(onAdd = onAddHabit, onDismiss = onDismiss)
             }
@@ -117,9 +106,10 @@ fun QuickAddSheet(
 private fun ExpenseTabContent(
     onAdd: (Double, ExpenseCategory, String, LocalDate) -> Unit,
     onDismiss: () -> Unit,
-    currencySymbol: String = "$"
+    currencySymbol: String = "$",
+    lastAmount: Double = 0.0
 ) {
-    var amount by remember { mutableStateOf("") }
+    var amount by remember { mutableStateOf(if (lastAmount > 0) "%.2f".format(lastAmount) else "") }
     var note by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf(ExpenseCategory.FOOD) }
     var selectedDate by remember { mutableStateOf(LocalDate.now()) }
@@ -260,12 +250,14 @@ private fun ExpenseTabContent(
 
 @Composable
 private fun IncomeTabContent(
-    onAdd: (Double, String) -> Unit,
+    onAdd: (Double, String, LocalDate) -> Unit,
     onDismiss: () -> Unit,
     currencySymbol: String = "$"
 ) {
     var amount by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
+    var selectedDate by remember { mutableStateOf(LocalDate.now()) }
+    val context = LocalContext.current
 
     Column(
         modifier = Modifier
@@ -281,6 +273,43 @@ private fun IncomeTabContent(
             prefix = { Text(currencySymbol) },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
             singleLine = true,
+            shape = RoundedCornerShape(8.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                unfocusedBorderColor = MaterialTheme.colorScheme.outline
+            ),
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        OutlinedTextField(
+            value = selectedDate.format(DateTimeFormatter.ofPattern("MMM d, yyyy")),
+            onValueChange = {},
+            readOnly = true,
+            label = { Text("Date") },
+            trailingIcon = {
+                Text(
+                    text = "Change",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .padding(end = 8.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .clickable {
+                            DatePickerDialog(
+                                context,
+                                { _, year, month, day ->
+                                    selectedDate = LocalDate.of(year, month + 1, day)
+                                },
+                                selectedDate.year,
+                                selectedDate.monthValue - 1,
+                                selectedDate.dayOfMonth
+                            ).show()
+                        }
+                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                )
+            },
             shape = RoundedCornerShape(8.dp),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = MaterialTheme.colorScheme.primary,
@@ -318,7 +347,7 @@ private fun IncomeTabContent(
                 onClick = {
                     val parsedAmount = amount.toDoubleOrNull()
                     if (parsedAmount != null && parsedAmount > 0) {
-                        onAdd(parsedAmount, note.ifBlank { "Income" })
+                        onAdd(parsedAmount, note.ifBlank { "Income" }, selectedDate)
                     }
                 },
                 enabled = amount.toDoubleOrNull() != null && (amount.toDoubleOrNull() ?: 0.0) > 0
@@ -332,12 +361,12 @@ private fun IncomeTabContent(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun HabitTabContent(
-    onAdd: (String, String) -> Unit,
+    onAdd: (String, String, Int) -> Unit,
     onDismiss: () -> Unit
 ) {
     var name by remember { mutableStateOf("") }
-    val icons = listOf("\uD83D\uDCD6", "\uD83D\uDCAA", "\uD83E\uDDD8", "☕", "✍\uFE0F", "\uD83C\uDFC3", "\uD83D\uDCA7", "\uD83C\uDFB5", "\uD83E\uDDF9", "\uD83E\uDD57", "\uD83D\uDE34", "\uD83D\uDCF5")
-    var selectedIcon by remember { mutableStateOf(icons[0]) }
+    var selectedIcon by remember { mutableStateOf(HabitIcons[0]) }
+    var targetDays by remember { mutableIntStateOf(7) }
 
     Column(
         modifier = Modifier
@@ -371,7 +400,7 @@ private fun HabitTabContent(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            icons.forEach { icon ->
+            HabitIcons.forEach { icon ->
                 val isSelected = icon == selectedIcon
                 Box(
                     modifier = Modifier
@@ -391,6 +420,43 @@ private fun HabitTabContent(
 
         Spacer(modifier = Modifier.height(16.dp))
 
+        Text(
+            text = "Target: $targetDays days/week",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(modifier = Modifier.height(6.dp))
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            (1..7).forEach { day ->
+                val isSelected = day == targetDays
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(androidx.compose.foundation.shape.CircleShape)
+                        .background(
+                            if (isSelected) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.surfaceVariant
+                        )
+                        .clickable { targetDays = day },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "$day",
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                        ),
+                        color = if (isSelected) MaterialTheme.colorScheme.onPrimary
+                        else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.End
@@ -402,7 +468,7 @@ private fun HabitTabContent(
             TextButton(
                 onClick = {
                     if (name.isNotBlank()) {
-                        onAdd(name.trim(), selectedIcon)
+                        onAdd(name.trim(), selectedIcon, targetDays)
                     }
                 },
                 enabled = name.isNotBlank()

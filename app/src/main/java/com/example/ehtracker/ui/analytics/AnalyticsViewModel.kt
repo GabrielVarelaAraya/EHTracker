@@ -8,6 +8,7 @@ import com.example.ehtracker.data.model.ExpenseCategory
 import com.example.ehtracker.data.model.Habit
 import com.example.ehtracker.data.repository.TrackerRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -30,8 +31,7 @@ enum class InsightType { SAVING, TIP, WARNING }
 
 enum class DateRange(val label: String) {
     WEEK("Week"),
-    MONTH("Month"),
-    QUARTER("Quarter")
+    MONTH("Month")
 }
 
 data class HabitSummary(
@@ -46,6 +46,9 @@ class AnalyticsViewModel(private val repository: TrackerRepository) : ViewModel(
     private val _isLoading = MutableStateFlow(true)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
+
     private val _selectedRange = MutableStateFlow(DateRange.MONTH)
     val selectedRange: StateFlow<DateRange> = _selectedRange.asStateFlow()
 
@@ -54,23 +57,28 @@ class AnalyticsViewModel(private val repository: TrackerRepository) : ViewModel(
         return when (range) {
             DateRange.WEEK -> today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
             DateRange.MONTH -> today.withDayOfMonth(1)
-            DateRange.QUARTER -> {
-                val quarter = (today.monthValue - 1) / 3
-                LocalDate.of(today.year, quarter * 3 + 1, 1)
-            }
+        }
+    }
+
+    private fun rangeEndFor(range: DateRange): LocalDate {
+        return when (range) {
+            DateRange.WEEK -> rangeStartFor(range).plusDays(6)
+            DateRange.MONTH -> rangeStartFor(range).withDayOfMonth(
+                rangeStartFor(range).lengthOfMonth()
+            )
         }
     }
 
     val dailyExpenses: StateFlow<Map<Int, Double>> = _selectedRange.flatMapLatest { range ->
-        repository.dailyExpensesForRange(rangeStartFor(range), LocalDate.now())
+        repository.dailyExpensesForRange(rangeStartFor(range), rangeEndFor(range))
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
     val expensesByCategory: StateFlow<Map<ExpenseCategory, Double>> = _selectedRange.flatMapLatest { range ->
-        repository.expensesByCategoryForRange(rangeStartFor(range), LocalDate.now())
+        repository.expensesByCategoryForRange(rangeStartFor(range), rangeEndFor(range))
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
     val rangeTotal: StateFlow<Double> = _selectedRange.flatMapLatest { range ->
-        repository.expensesForRange(rangeStartFor(range), LocalDate.now()).map { list -> list.sumOf { it.amount } }
+        repository.expensesForRange(rangeStartFor(range), rangeEndFor(range)).map { list -> list.sumOf { it.amount } }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
 
     val habitCompletionRate: StateFlow<Float> = repository.habitCompletionRate()
@@ -80,9 +88,6 @@ class AnalyticsViewModel(private val repository: TrackerRepository) : ViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
 
     val weekTotal: StateFlow<Double> = repository.thisWeekExpenses()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
-
-    val quarterTotal: StateFlow<Double> = repository.thisQuarterExpenses()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
 
     val currency: StateFlow<Currency> = repository.currency()
@@ -112,6 +117,14 @@ class AnalyticsViewModel(private val repository: TrackerRepository) : ViewModel(
 
     fun selectRange(range: DateRange) {
         _selectedRange.value = range
+    }
+
+    fun refresh() {
+        viewModelScope.launch {
+            _isRefreshing.value = true
+            delay(300)
+            _isRefreshing.value = false
+        }
     }
 
     fun aiInsights(): List<AiInsight> {

@@ -3,6 +3,7 @@ package com.example.ehtracker.ui.components
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,8 +28,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
@@ -95,75 +98,147 @@ fun MiniLineChart(
     modifier: Modifier = Modifier,
     lineColor: Color = MaterialTheme.colorScheme.primary,
     fillColor: Color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
-    maxLabel: String = "Max",
+    currencySymbol: String = "$",
+    preselectCurrentDay: Boolean = false,
 ) {
     val values = data.values.toList()
     val maxVal = (values.maxOrNull() ?: 1.0).coerceAtLeast(1.0)
     val days = data.keys.toList()
 
+    var selectedIndex by remember(days) {
+        val initial = if (preselectCurrentDay) {
+            days.indexOf(java.time.LocalDate.now().dayOfMonth)
+        } else -1
+        mutableStateOf(initial)
+    }
+
     Column(modifier = modifier.fillMaxWidth()) {
-        Canvas(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(80.dp)
-        ) {
-            if (values.isEmpty()) return@Canvas
-            val width = size.width
-            val height = size.height
-            val stepX = if (values.size > 1) width / (values.size - 1) else width
-            val padding = 4.dp.toPx()
-
-            val points = values.mapIndexed { index, value ->
-                Offset(
-                    x = index * stepX,
-                    y = height - padding - ((value / maxVal) * (height - padding * 2)).toFloat()
-                )
-            }
-
-            // Fill path
-            val fillPath = androidx.compose.ui.graphics.Path().apply {
-                moveTo(points.first().x, height)
-                points.forEach { lineTo(it.x, it.y) }
-                lineTo(points.last().x, height)
-                close()
-            }
-            drawPath(fillPath, fillColor)
-
-            // Line path
-            val linePath = androidx.compose.ui.graphics.Path().apply {
-                moveTo(points.first().x, points.first().y)
-                for (i in 1 until points.size) {
-                    lineTo(points[i].x, points[i].y)
-                }
-            }
-            drawPath(linePath, lineColor, style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round))
-
-            // Dots
-            points.forEach { point ->
-                drawCircle(
-                    color = lineColor,
-                    radius = 3.dp.toPx(),
-                    center = point
-                )
-            }
+        if (selectedIndex in days.indices) {
+            Text(
+                text = "Day ${days[selectedIndex]}: $currencySymbol${"%.0f".format(values[selectedIndex])}",
+                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = lineColor,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
         }
 
-        // Day labels
-        if (days.isNotEmpty()) {
-            Row(
+        val yAxisWidth = 36.dp
+        val chartHeight = 140.dp
+
+        Row(modifier = Modifier.fillMaxWidth()) {
+            Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween
+                    .width(yAxisWidth)
+                    .height(chartHeight)
+                    .padding(vertical = 4.dp),
+                verticalArrangement = Arrangement.SpaceBetween,
+                horizontalAlignment = Alignment.End
             ) {
-                val labelCount = minOf(days.size, 6)
-                val step = if (days.size > labelCount) days.size / labelCount else 1
-                for (i in days.indices step step.coerceAtLeast(1)) {
-                    Text(
-                        text = "${days[i]}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                Text(
+                    text = "$currencySymbol${"%.0f".format(maxVal)}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = "$currencySymbol${"%.0f".format(maxVal / 2)}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = "$currencySymbol${"%.0f".format(0.0)}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Column(modifier = Modifier.weight(1f).padding(start = 8.dp)) {
+                Canvas(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(chartHeight)
+                        .pointerInput(values) {
+                            detectTapGestures { offset ->
+                                if (values.isEmpty()) return@detectTapGestures
+                                val chartWidth = size.width
+                                val stepX = if (values.size > 1) chartWidth / (values.size - 1) else chartWidth
+                                val nearestIndex = ((offset.x) / stepX + 0.5f).toInt()
+                                    .coerceIn(0, values.size - 1)
+                                selectedIndex = nearestIndex
+                            }
+                        }
+                ) {
+                    if (values.isEmpty()) return@Canvas
+                    val w = size.width
+                    val h = size.height
+                    val pad = 4.dp.toPx()
+                    val chartH = h - pad * 2
+
+                    for (i in 0..3) {
+                        val y = h - pad - (chartH * i / 3)
+                        drawLine(
+                            color = lineColor.copy(alpha = 0.08f),
+                            start = Offset(0f, y),
+                            end = Offset(w, y),
+                            strokeWidth = 1.dp.toPx()
+                        )
+                    }
+
+                    val pts = values.mapIndexed { index, value ->
+                        Offset(
+                            x = if (values.size > 1) index * w / (values.size - 1) else 0f,
+                            y = h - pad - ((value / maxVal) * chartH).toFloat()
+                        )
+                    }
+
+                    val fillPath = Path().apply {
+                        moveTo(pts.first().x, h)
+                        pts.forEach { lineTo(it.x, it.y) }
+                        lineTo(pts.last().x, h)
+                        close()
+                    }
+                    drawPath(fillPath, fillColor)
+
+                    val linePath = Path().apply {
+                        moveTo(pts.first().x, pts.first().y)
+                        for (i in 1 until pts.size) {
+                            lineTo(pts[i].x, pts[i].y)
+                        }
+                    }
+                    drawPath(linePath, lineColor, style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round))
+
+                    pts.forEachIndexed { index, pt ->
+                        val isSel = index == selectedIndex
+                        drawCircle(
+                            color = if (isSel) Color.White else lineColor,
+                            radius = if (isSel) 6.dp.toPx() else 3.dp.toPx(),
+                            center = pt
+                        )
+                        if (isSel) {
+                            drawCircle(
+                                color = lineColor,
+                                radius = 4.dp.toPx(),
+                                center = pt
+                            )
+                        }
+                    }
+                }
+
+                if (days.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        val labelCount = minOf(days.size, 6)
+                        val step = if (days.size > labelCount) days.size / labelCount else 1
+                        for (i in days.indices step step.coerceAtLeast(1)) {
+                            Text(
+                                text = "${days[i]}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                 }
             }
         }

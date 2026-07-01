@@ -15,7 +15,10 @@ import androidx.room.PrimaryKey
             onDelete = ForeignKey.CASCADE
         )
     ],
-    indices = [Index(value = ["habitId"]), Index(value = ["date"])]
+    indices = [
+        Index(value = ["habitId", "date"]),
+        Index(value = ["date"])
+    ]
 )
 data class HabitCompletionEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,

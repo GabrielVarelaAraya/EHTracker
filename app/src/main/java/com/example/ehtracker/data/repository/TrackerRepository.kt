@@ -8,6 +8,7 @@ import com.example.ehtracker.data.local.entity.ExpenseEntity
 import com.example.ehtracker.data.local.entity.HabitCompletionEntity
 import com.example.ehtracker.data.local.entity.HabitEntity
 import com.example.ehtracker.data.local.entity.IncomeEntity
+import com.example.ehtracker.data.local.entity.PreferencesEntity
 import com.example.ehtracker.data.model.Currency
 import com.example.ehtracker.data.model.Expense
 import com.example.ehtracker.data.model.ExpenseCategory
@@ -15,6 +16,7 @@ import com.example.ehtracker.data.model.Habit
 import com.example.ehtracker.data.model.Income
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import java.time.Instant
 import java.time.LocalDate
@@ -30,6 +32,7 @@ class TrackerRepository(private val database: AppDatabase) {
     private val balanceDao = database.balanceDao()
     private val currencyDao = database.currencyDao()
     private val budgetDao = database.budgetDao()
+    private val preferencesDao = database.preferencesDao()
 
     // --- Habits ---
 
@@ -72,14 +75,7 @@ class TrackerRepository(private val database: AppDatabase) {
     }
 
     suspend fun updateHabit(id: String, name: String, icon: String, targetDaysPerWeek: Int) {
-        val existing = habitDao.getById(id) ?: return
-        habitDao.insert(
-            existing.copy(
-                name = name,
-                icon = icon,
-                targetDaysPerWeek = targetDaysPerWeek
-            )
-        )
+        habitDao.update(id, name, icon, targetDaysPerWeek)
     }
 
     suspend fun deleteHabit(id: String) {
@@ -132,6 +128,34 @@ class TrackerRepository(private val database: AppDatabase) {
         expenseDao.deleteById(id)
     }
 
+    suspend fun getExpenseEntityById(id: String): ExpenseEntity? = expenseDao.getById(id)
+
+    suspend fun getHabitEntityById(id: String): HabitEntity? = habitDao.getById(id)
+
+    suspend fun getHabitCompletionsByHabitId(id: String): List<HabitCompletionEntity> =
+        completionDao.getByHabitIdOnce(id)
+
+    suspend fun getIncomeEntityById(id: String): IncomeEntity? = incomeDao.getById(id)
+
+    suspend fun deleteExpenseWithUndo(id: String): ExpenseEntity? =
+        expenseDao.getAndDelete(id)
+
+    suspend fun restoreExpense(entity: ExpenseEntity) {
+        expenseDao.insert(entity)
+    }
+
+    suspend fun deleteHabitWithUndo(id: String): Pair<HabitEntity, List<HabitCompletionEntity>>? {
+        val habit = habitDao.getById(id) ?: return null
+        val completions = completionDao.getByHabitIdOnce(id)
+        habitDao.deleteById(id)
+        return habit to completions
+    }
+
+    suspend fun restoreHabit(habit: HabitEntity, completions: List<HabitCompletionEntity>) {
+        habitDao.insert(habit)
+        completions.forEach { completionDao.insert(it) }
+    }
+
     // --- Income ---
 
     fun incomes(): Flow<List<Income>> {
@@ -141,7 +165,7 @@ class TrackerRepository(private val database: AppDatabase) {
                     id = entity.id,
                     amount = entity.amount,
                     note = entity.note,
-                    date = Instant.ofEpochMilli(entity.date).atZone(ZoneId.systemDefault()).toLocalDate()
+                    date = entity.date.toLocalDate()
                 )
             }
         }
@@ -151,19 +175,30 @@ class TrackerRepository(private val database: AppDatabase) {
         return incomeDao.totalAll().map { it ?: 0.0 }
     }
 
-    suspend fun addIncome(amount: Double, note: String) {
+    suspend fun addIncome(amount: Double, note: String, date: LocalDate) {
         incomeDao.insert(
             IncomeEntity(
                 id = UUID.randomUUID().toString(),
                 amount = amount,
                 note = note,
-                date = LocalDate.now().toEpochMillis()
+                date = date.toEpochMillis()
             )
         )
     }
 
     suspend fun deleteIncome(id: String) {
         incomeDao.deleteById(id)
+    }
+
+    suspend fun updateIncome(id: String, amount: Double, note: String, date: LocalDate) {
+        incomeDao.update(id, amount, note, date.toEpochMillis())
+    }
+
+    suspend fun deleteIncomeWithUndo(id: String): IncomeEntity? =
+        incomeDao.getAndDelete(id)
+
+    suspend fun restoreIncome(entity: IncomeEntity) {
+        incomeDao.insert(entity)
     }
 
     // --- Balance ---
@@ -226,6 +261,53 @@ class TrackerRepository(private val database: AppDatabase) {
         }
     }
 
+    // --- Preferences ---
+
+    fun themeMode(): Flow<String> {
+        return preferencesDao.get().map { it?.themeMode ?: "system" }
+    }
+
+    suspend fun setThemeMode(mode: String) {
+        val current = preferencesDao.get().first()
+        preferencesDao.set((current ?: PreferencesEntity()).copy(themeMode = mode))
+    }
+
+    suspend fun getNotificationPrefs(): Triple<Int, Int, Boolean> {
+        val prefs = preferencesDao.get().first()
+        return Triple(
+            prefs?.notificationHour ?: 20,
+            prefs?.notificationMinute ?: 0,
+            prefs?.notificationsEnabled ?: true
+        )
+    }
+
+    fun notificationHour(): Flow<Int> {
+        return preferencesDao.get().map { it?.notificationHour ?: 20 }
+    }
+
+    fun notificationMinute(): Flow<Int> {
+        return preferencesDao.get().map { it?.notificationMinute ?: 0 }
+    }
+
+    fun notificationsEnabled(): Flow<Boolean> {
+        return preferencesDao.get().map { it?.notificationsEnabled ?: true }
+    }
+
+    suspend fun setNotificationHour(hour: Int) {
+        val current = preferencesDao.get().first()
+        preferencesDao.set((current ?: PreferencesEntity()).copy(notificationHour = hour))
+    }
+
+    suspend fun setNotificationMinute(minute: Int) {
+        val current = preferencesDao.get().first()
+        preferencesDao.set((current ?: PreferencesEntity()).copy(notificationMinute = minute))
+    }
+
+    suspend fun setNotificationsEnabled(enabled: Boolean) {
+        val current = preferencesDao.get().first()
+        preferencesDao.set((current ?: PreferencesEntity()).copy(notificationsEnabled = enabled))
+    }
+
     // --- Analytics ---
 
     fun todayTotalExpenses(): Flow<Double> {
@@ -245,13 +327,6 @@ class TrackerRepository(private val database: AppDatabase) {
         return expenseDao.sumByDateRange(startOfMonth.toEpochMillis(), today.toEpochMillis()).map { it ?: 0.0 }
     }
 
-    fun thisQuarterExpenses(): Flow<Double> {
-        val today = LocalDate.now()
-        val quarter = (today.monthValue - 1) / 3
-        val startOfQuarter = LocalDate.of(today.year, quarter * 3 + 1, 1)
-        return expenseDao.sumByDateRange(startOfQuarter.toEpochMillis(), today.toEpochMillis()).map { it ?: 0.0 }
-    }
-
     fun expensesForRange(startDate: LocalDate, endDate: LocalDate): Flow<List<Expense>> {
         return expenseDao.getByDateRange(startDate.toEpochMillis(), endDate.toEpochMillis()).map { list ->
             list.map { it.toDomain() }
@@ -261,7 +336,7 @@ class TrackerRepository(private val database: AppDatabase) {
     fun dailyExpensesForRange(startDate: LocalDate, endDate: LocalDate): Flow<Map<Int, Double>> {
         return expenseDao.getByDateRange(startDate.toEpochMillis(), endDate.toEpochMillis()).map { list ->
             list.groupBy { entity ->
-                Instant.ofEpochMilli(entity.date).atZone(ZoneId.systemDefault()).toLocalDate().dayOfMonth
+                entity.date.toLocalDate().dayOfMonth
             }.mapValues { entry -> entry.value.sumOf { it.amount } }
         }
     }
@@ -304,7 +379,7 @@ class TrackerRepository(private val database: AppDatabase) {
 
     private fun HabitEntity.toDomain(completions: List<HabitCompletionEntity>): Habit {
         val completedDates = completions.map { entity ->
-            Instant.ofEpochMilli(entity.date).atZone(ZoneId.systemDefault()).toLocalDate()
+            entity.date.toLocalDate()
         }
         return Habit(
             id = id,
@@ -321,11 +396,15 @@ class TrackerRepository(private val database: AppDatabase) {
             amount = amount,
             category = ExpenseCategory.valueOf(category),
             note = note,
-            date = Instant.ofEpochMilli(date).atZone(ZoneId.systemDefault()).toLocalDate()
+            date = date.toLocalDate()
         )
     }
 
     private fun LocalDate.toEpochMillis(): Long {
         return this.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+    }
+
+    private fun Long.toLocalDate(): LocalDate {
+        return Instant.ofEpochMilli(this).atZone(ZoneId.systemDefault()).toLocalDate()
     }
 }

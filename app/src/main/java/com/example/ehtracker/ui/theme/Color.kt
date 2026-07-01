@@ -27,6 +27,104 @@ val LightAccent = Color(0xFF4A9E6E)
 val LightAccentMuted = Color(0xFFDFF0E5)
 val LightError = Color(0xFFB00020)
 
+// Teal palette
+val TealPrimary = Color(0xFF00796B)
+val TealOnPrimary = Color.White
+val TealPrimaryContainer = Color(0xFFB2DFDB)
+val TealSecondary = Color(0xFF4DB6AC)
+val TealOnSecondary = Color.White
+
+// Amber palette
+val AmberPrimary = Color(0xFFFF8F00)
+val AmberOnPrimary = Color.White
+val AmberPrimaryContainer = Color(0xFFFFECB3)
+val AmberSecondary = Color(0xFFF57C00)
+val AmberOnSecondary = Color.White
+
+// Teal palette (dark)
+val TealPrimaryDark = Color(0xFF80CBC4)
+val TealOnPrimaryDark = Color(0xFF00251E)
+val TealPrimaryContainerDark = Color(0xFF004D40)
+val TealSecondaryDark = Color(0xFF4DB6AC)
+val TealOnSecondaryDark = Color(0xFF00251E)
+
+// Amber palette (dark)
+val AmberPrimaryDark = Color(0xFFFFD54F)
+val AmberOnPrimaryDark = Color(0xFF3E2723)
+val AmberPrimaryContainerDark = Color(0xFF6D4C41)
+val AmberSecondaryDark = Color(0xFFFFB300)
+val AmberOnSecondaryDark = Color(0xFF3E2723)
+
+// Indigo palette
+val IndigoPrimary = Color(0xFF3949AB)
+val IndigoOnPrimary = Color.White
+val IndigoPrimaryContainer = Color(0xFFC5CAE9)
+val IndigoSecondary = Color(0xFF7986CB)
+val IndigoOnSecondary = Color.White
+
+// Indigo palette (dark)
+val IndigoPrimaryDark = Color(0xFF9FA8DA)
+val IndigoOnPrimaryDark = Color(0xFF1A237E)
+val IndigoPrimaryContainerDark = Color(0xFF283593)
+val IndigoSecondaryDark = Color(0xFF7986CB)
+val IndigoOnSecondaryDark = Color(0xFF1A237E)
+
+// Rose palette
+val RosePrimary = Color(0xFFE91E63)
+val RoseOnPrimary = Color.White
+val RosePrimaryContainer = Color(0xFFF8BBD0)
+val RoseSecondary = Color(0xFFF06292)
+val RoseOnSecondary = Color.White
+
+// Rose palette (dark)
+val RosePrimaryDark = Color(0xFFF48FB1)
+val RoseOnPrimaryDark = Color(0xFF4A0020)
+val RosePrimaryContainerDark = Color(0xFF880E4F)
+val RoseSecondaryDark = Color(0xFFF06292)
+val RoseOnSecondaryDark = Color(0xFF4A0020)
+
+// Purple palette
+val PurplePrimary = Color(0xFF9C27B0)
+val PurpleOnPrimary = Color.White
+val PurplePrimaryContainer = Color(0xFFE1BEE7)
+val PurpleSecondary = Color(0xFFBA68C8)
+val PurpleOnSecondary = Color.White
+
+// Purple palette (dark)
+val PurplePrimaryDark = Color(0xFFCE93D8)
+val PurpleOnPrimaryDark = Color(0xFF3E0451)
+val PurplePrimaryContainerDark = Color(0xFF7B1FA2)
+val PurpleSecondaryDark = Color(0xFFBA68C8)
+val PurpleOnSecondaryDark = Color(0xFF3E0451)
+
+// Coral palette
+val CoralPrimary = Color(0xFFFF5722)
+val CoralOnPrimary = Color.White
+val CoralPrimaryContainer = Color(0xFFFFCCBC)
+val CoralSecondary = Color(0xFFFF7043)
+val CoralOnSecondary = Color.White
+
+// Coral palette (dark)
+val CoralPrimaryDark = Color(0xFFFFAB91)
+val CoralOnPrimaryDark = Color(0xFF4A1500)
+val CoralPrimaryContainerDark = Color(0xFFBF360C)
+val CoralSecondaryDark = Color(0xFFFF7043)
+val CoralOnSecondaryDark = Color(0xFF4A1500)
+
+// Slate palette
+val SlatePrimary = Color(0xFF607D8B)
+val SlateOnPrimary = Color.White
+val SlatePrimaryContainer = Color(0xFFCFD8DC)
+val SlateSecondary = Color(0xFF90A4AE)
+val SlateOnSecondary = Color.White
+
+// Slate palette (dark)
+val SlatePrimaryDark = Color(0xFF90A4AE)
+val SlateOnPrimaryDark = Color(0xFF1A2E38)
+val SlatePrimaryContainerDark = Color(0xFF455A64)
+val SlateSecondaryDark = Color(0xFF78909C)
+val SlateOnSecondaryDark = Color(0xFF1A2E38)
+
 // Shared category colors (muted)
 val CategoryFood = Color(0xFFE8A87C)
 val CategoryTransport = Color(0xFF85CDCA)

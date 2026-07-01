@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -19,6 +21,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -26,11 +29,13 @@ import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -64,20 +69,11 @@ import java.time.format.DateTimeFormatter
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen(
-    viewModel: DashboardViewModel
+    viewModel: DashboardViewModel,
+    onNavigateToSettings: () -> Unit = {}
 ) {
-    val habits by viewModel.habits.collectAsState()
-    val todayTotal by viewModel.todayTotal.collectAsState()
-    val weekTotal by viewModel.weekTotal.collectAsState()
-    val monthTotal by viewModel.monthTotal.collectAsState()
-    val savings by viewModel.savings.collectAsState()
-    val totalExpenses by viewModel.totalExpenses.collectAsState()
-    val totalIncome by viewModel.totalIncome.collectAsState()
-    val currentBalance by viewModel.currentBalance.collectAsState()
-    val currency by viewModel.currency.collectAsState()
-    val showEditSavings by viewModel.showEditSavings.collectAsState()
-    val isLoading by viewModel.isLoading.collectAsState()
-    val sym = currency.symbol
+    val state by viewModel.uiState.collectAsState()
+    val sym = state.currency.symbol
 
     val today = LocalDate.now()
     val greeting = when (today.dayOfWeek.value) {
@@ -102,13 +98,19 @@ fun DashboardScreen(
             }
         }
     ) { padding ->
-        if (isLoading) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
+        PullToRefreshBox(
+            isRefreshing = state.isRefreshing,
+            onRefresh = { viewModel.refresh() },
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+        ) {
+            if (state.isLoading) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
             ) {
                 ShimmerBox(
                     modifier = Modifier
@@ -152,7 +154,7 @@ fun DashboardScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = greeting,
                         style = MaterialTheme.typography.displayLarge.copy(fontWeight = FontWeight.Bold),
@@ -164,15 +166,22 @@ fun DashboardScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+                IconButton(onClick = onNavigateToSettings) {
+                    Icon(
+                        Icons.Filled.Settings,
+                        contentDescription = "Settings",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(20.dp))
 
             SavingsCard(
-                savings = savings,
-                totalExpenses = totalExpenses,
-                totalIncome = totalIncome,
-                currentBalance = currentBalance,
+                savings = state.savings,
+                totalExpenses = state.totalExpenses,
+                totalIncome = state.totalIncome,
+                currentBalance = state.currentBalance,
                 currencySymbol = sym
             )
 
@@ -184,7 +193,7 @@ fun DashboardScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(bottom = 8.dp)
             )
-            if (habits.isEmpty()) {
+            if (state.habits.isEmpty()) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -193,26 +202,59 @@ fun DashboardScreen(
                         .padding(vertical = 24.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = "No habits yet — tap + to add your first",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "📋",
+                            style = MaterialTheme.typography.headlineMedium
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "No habits yet — tap + to add your first",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             } else {
-                HabitStreakRow(
-                    habits = habits,
-                    onToggle = { habitId, date -> viewModel.toggleHabit(habitId, date) }
+                val today = LocalDate.now()
+                val thisMonday = today.minusDays(today.dayOfWeek.value.toLong() - 1)
+                val totalPages = 520
+                val initialPage = totalPages / 2
+                val pagerState = rememberPagerState(initialPage = initialPage) { totalPages }
+
+                val weekOffset = pagerState.currentPage - initialPage
+                val weekStart = thisMonday.plusWeeks(weekOffset.toLong())
+                val weekDates = (0..6).map { weekStart.plusDays(it.toLong()) }
+                val weekLabel = "${weekDates.first().format(DateTimeFormatter.ofPattern("MMM d"))} - ${weekDates.last().format(DateTimeFormatter.ofPattern("MMM d, yyyy"))}"
+
+                Text(
+                    text = weekLabel,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 8.dp)
                 )
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier.fillMaxWidth()
+                ) { page ->
+                    val offset = page - initialPage
+                    val start = thisMonday.plusWeeks(offset.toLong())
+                    val dates = (0..6).map { start.plusDays(it.toLong()) }
+                    HabitStreakRow(
+                        habits = state.habits,
+                        onToggle = { habitId, date -> viewModel.toggleHabit(habitId, date) },
+                        weekDates = dates
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            if (todayTotal > 0 || weekTotal > 0 || monthTotal > 0) {
+            if (state.todayTotal > 0 || state.weekTotal > 0 || state.monthTotal > 0) {
                 ExpenseSummaryCard(
-                    todayTotal = todayTotal,
-                    weekTotal = weekTotal,
-                    monthTotal = monthTotal,
+                    todayTotal = state.todayTotal,
+                    weekTotal = state.weekTotal,
+                    monthTotal = state.monthTotal,
                     currencySymbol = sym
                 )
             } else {
@@ -230,11 +272,18 @@ fun DashboardScreen(
                         .padding(vertical = 24.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = "No expenses logged yet",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "💳",
+                            style = MaterialTheme.typography.headlineMedium
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "No expenses logged yet",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
 
@@ -249,12 +298,12 @@ fun DashboardScreen(
             AiInsightsCard(
                 insights = listOf(
                     AiInsight(
-                        "You spent $sym${"%.0f".format(todayTotal)} today.",
+                        "You spent $sym${"%.0f".format(state.todayTotal)} today.",
                         InsightType.SAVING
                     ),
                     AiInsight(
-                        "You have $sym${"%.0f".format(currentBalance)} remaining from your savings.",
-                        if (currentBalance >= 0) InsightType.TIP else InsightType.WARNING
+                        "You have $sym${"%.0f".format(state.currentBalance)} remaining from your savings.",
+                        if (state.currentBalance >= 0) InsightType.TIP else InsightType.WARNING
                     )
                 )
             )
@@ -262,15 +311,17 @@ fun DashboardScreen(
             Spacer(modifier = Modifier.height(80.dp))
         }
         }
+        }
     }
 
-    if (showEditSavings) {
+    if (state.showEditSavings) {
         EditSavingsSheet(
-            currentSavings = savings,
-            currentCurrency = currency,
+            currentSavings = state.savings,
+            currentCurrency = state.currency,
             onDismiss = { viewModel.dismissEditSavings() },
-            onSave = { viewModel.setSavings(it) },
-            onCurrencyChange = { viewModel.setCurrency(it) }
+            onSave = { amount, selectedCurrency ->
+                viewModel.setSavings(amount, selectedCurrency)
+            }
         )
     }
 }
@@ -281,8 +332,7 @@ private fun EditSavingsSheet(
     currentSavings: Double,
     currentCurrency: Currency,
     onDismiss: () -> Unit,
-    onSave: (Double) -> Unit,
-    onCurrencyChange: (Currency) -> Unit
+    onSave: (Double, Currency) -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var amount by remember {
@@ -372,7 +422,6 @@ private fun EditSavingsSheet(
                             },
                             onClick = {
                                 selectedCurrency = currency
-                                onCurrencyChange(currency)
                                 currencyExpanded = false
                             }
                         )
@@ -393,7 +442,7 @@ private fun EditSavingsSheet(
                     onClick = {
                         val parsed = amount.toDoubleOrNull()
                         if (parsed != null && parsed >= 0) {
-                            onSave(parsed)
+                            onSave(parsed, selectedCurrency)
                         }
                     },
                     enabled = amount.toDoubleOrNull() != null && (amount.toDoubleOrNull() ?: -1.0) >= 0

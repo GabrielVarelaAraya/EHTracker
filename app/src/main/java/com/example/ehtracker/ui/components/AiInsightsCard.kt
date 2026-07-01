@@ -42,7 +42,7 @@ fun AiInsightsCard(
                 modifier = Modifier.padding(end = 6.dp)
             )
             Text(
-                text = "AI Insights",
+                text = "Insights",
                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
                 color = MaterialTheme.colorScheme.onSurface
             )

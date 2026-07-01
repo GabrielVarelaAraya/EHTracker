@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import com.example.ehtracker.data.local.entity.HabitEntity
 import kotlinx.coroutines.flow.Flow
 
@@ -23,4 +24,10 @@ interface HabitDao {
 
     @Query("SELECT COUNT(*) FROM habits")
     suspend fun count(): Int
+
+    @Transaction
+    suspend fun update(id: String, name: String, icon: String, targetDaysPerWeek: Int) {
+        val existing = getById(id) ?: return
+        insert(existing.copy(name = name, icon = icon, targetDaysPerWeek = targetDaysPerWeek))
+    }
 }

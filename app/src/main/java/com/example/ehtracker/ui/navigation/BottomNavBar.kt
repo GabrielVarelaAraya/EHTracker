@@ -15,23 +15,23 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
-enum class Screen(val route: String, val label: String, val icon: ImageVector) {
-    Dashboard("dashboard", "Home", Icons.Outlined.Home),
-    Analytics("analytics", "Insights", Icons.Outlined.Analytics),
-    Logs("logs", "History", Icons.Outlined.History)
+enum class Screen(val label: String, val icon: ImageVector) {
+    Dashboard("Home", Icons.Outlined.Home),
+    Analytics("Insights", Icons.Outlined.Analytics),
+    Logs("History", Icons.Outlined.History)
 }
 
 @Composable
 fun BottomNavBar(
-    currentRoute: String?,
-    onNavigate: (String) -> Unit
+    currentPage: Int,
+    onNavigate: (Int) -> Unit
 ) {
     NavigationBar(
         containerColor = MaterialTheme.colorScheme.surface,
         contentColor = MaterialTheme.colorScheme.onSurface
     ) {
-        Screen.entries.forEach { screen ->
-            val selected = currentRoute == screen.route
+        Screen.entries.forEachIndexed { index, screen ->
+            val selected = index == currentPage
             NavigationBarItem(
                 icon = {
                     Icon(screen.icon, contentDescription = screen.label)
@@ -44,7 +44,7 @@ fun BottomNavBar(
                     )
                 },
                 selected = selected,
-                onClick = { onNavigate(screen.route) },
+                onClick = { onNavigate(index) },
                 colors = NavigationBarItemDefaults.colors(
                     selectedIconColor = MaterialTheme.colorScheme.primary,
                     selectedTextColor = MaterialTheme.colorScheme.primary,

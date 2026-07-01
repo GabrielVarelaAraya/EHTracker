@@ -20,6 +20,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -33,17 +35,18 @@ import java.util.Locale
 fun HabitStreakRow(
     habits: List<Habit>,
     onToggle: (String, LocalDate) -> Unit,
+    weekDates: List<LocalDate>,
     modifier: Modifier = Modifier
 ) {
     val today = LocalDate.now()
-    val weekDates = (0L downTo -6L).map { today.minusDays(it) }
+    val haptic = LocalHapticFeedback.current
 
     Column(modifier = modifier.fillMaxWidth()) {
         // Day labels
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
+            modifier = Modifier.fillMaxWidth()
         ) {
+            Spacer(modifier = Modifier.width(24.dp + 56.dp))
             weekDates.forEach { date ->
                 val dayLabel = date.format(DateTimeFormatter.ofPattern("d"))
                 val dayName = date.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.getDefault())
@@ -114,7 +117,10 @@ fun HabitStreakRow(
                                         else -> MaterialTheme.colorScheme.surfaceVariant
                                     }
                                 )
-                                .clickable { onToggle(habit.id, date) }
+                                .clickable {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    onToggle(habit.id, date)
+                                }
                         )
                     }
                 }

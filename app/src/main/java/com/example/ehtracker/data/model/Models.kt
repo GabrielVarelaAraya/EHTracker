@@ -51,6 +51,34 @@ data class Income(
     val date: LocalDate
 )
 
+sealed class Transaction {
+    abstract val id: String
+    abstract val amount: Double
+    abstract val note: String
+    abstract val date: LocalDate
+
+    data class Expense(
+        override val id: String,
+        override val amount: Double,
+        val category: ExpenseCategory,
+        override val note: String,
+        override val date: LocalDate
+    ) : Transaction()
+
+    data class Income(
+        override val id: String,
+        override val amount: Double,
+        override val note: String,
+        override val date: LocalDate
+    ) : Transaction()
+}
+
+fun Expense.toTransaction() = Transaction.Expense(id, amount, category, note, date)
+fun Income.toTransaction() = Transaction.Income(id, amount, note, date)
+
+fun Transaction.Expense.toExpense() = Expense(id, amount, category, note, date)
+fun Transaction.Income.toIncome() = Income(id, amount, note, date)
+
 enum class ExpenseCategory(val displayName: String, val icon: String) {
     FOOD("Food", "🍜"),
     TRANSPORT("Transport", "🚗"),

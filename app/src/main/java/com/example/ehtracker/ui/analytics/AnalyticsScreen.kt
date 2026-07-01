@@ -13,13 +13,17 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -53,86 +57,90 @@ fun AnalyticsScreen(viewModel: AnalyticsViewModel) {
     val habitsSummary by viewModel.habitsSummary.collectAsState()
     val currency by viewModel.currency.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+    val isRefreshing by viewModel.isRefreshing.collectAsState()
     val insights = viewModel.aiInsights()
     val sym = currency.symbol
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 8.dp)
+    PullToRefreshBox(
+        isRefreshing = isRefreshing,
+        onRefresh = { viewModel.refresh() },
+        modifier = Modifier.fillMaxSize()
     ) {
-        Text(
-            text = "Insights",
-            style = MaterialTheme.typography.displayLarge.copy(fontWeight = FontWeight.Bold),
-            color = MaterialTheme.colorScheme.onBackground
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Range selector
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(8.dp))
-                .background(MaterialTheme.colorScheme.surface)
-                .padding(4.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            DateRange.entries.forEach { range ->
-                val isSelected = range == selectedRange
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(
-                            if (isSelected) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.surface
-                        )
-                        .clickable { viewModel.selectRange(range) }
-                        .padding(vertical = 8.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = range.label,
-                        style = MaterialTheme.typography.labelLarge.copy(
-                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
-                        ),
-                        color = if (isSelected) MaterialTheme.colorScheme.onPrimary
-                        else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(20.dp))
-
-        SectionHeader("Spending Trend")
-        Spacer(modifier = Modifier.height(8.dp))
         Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(8.dp))
-                .background(MaterialTheme.colorScheme.surface)
-                .padding(12.dp)
+                .fillMaxSize()
+                .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
             Text(
-                text = "$sym${"%.0f".format(rangeTotal)}",
-                style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
-                color = MaterialTheme.colorScheme.onSurface
+                text = "Insights",
+                style = MaterialTheme.typography.displayLarge.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.onBackground
             )
-            Text(
-                text = "This ${selectedRange.label.lowercase()}",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Range selector
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surface)
+                    .padding(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                DateRange.entries.forEach { range ->
+                    val isSelected = range == selectedRange
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(
+                                if (isSelected) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.surface
+                            )
+                            .clickable { viewModel.selectRange(range) }
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = range.label,
+                            style = MaterialTheme.typography.labelLarge.copy(
+                                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
+                            ),
+                            color = if (isSelected) MaterialTheme.colorScheme.onPrimary
+                            else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
             Spacer(modifier = Modifier.height(12.dp))
-            MiniLineChart(data = dailyData)
-        }
 
-        Spacer(modifier = Modifier.height(20.dp))
+            val pagerState = rememberPagerState(
+                initialPage = DateRange.entries.indexOf(selectedRange),
+                pageCount = { DateRange.entries.size }
+            )
 
-        if (isLoading) {
+            LaunchedEffect(selectedRange) {
+                pagerState.animateScrollToPage(DateRange.entries.indexOf(selectedRange))
+            }
+
+            LaunchedEffect(pagerState.currentPage) {
+                viewModel.selectRange(DateRange.entries[pagerState.currentPage])
+            }
+
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+            ) { page ->
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    if (isLoading) {
             ShimmerBox(
                 modifier = Modifier
                     .fillMaxWidth(0.3f)
@@ -229,6 +237,21 @@ fun AnalyticsScreen(viewModel: AnalyticsViewModel) {
                 }
             }
 
+            Spacer(modifier = Modifier.height(20.dp))
+
+            SectionHeader("Daily Trend")
+            Spacer(modifier = Modifier.height(8.dp))
+            MiniLineChart(
+                data = dailyData,
+                preselectCurrentDay = true,
+                currencySymbol = sym,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surface)
+                    .padding(12.dp)
+            )
+
             if (habitsSummary.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(20.dp))
 
@@ -282,17 +305,20 @@ fun AnalyticsScreen(viewModel: AnalyticsViewModel) {
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            SectionHeader("AI Insights")
+            SectionHeader("Insights")
             Spacer(modifier = Modifier.height(8.dp))
             AiInsightsCard(insights = insights)
 
             Spacer(modifier = Modifier.height(80.dp))
         }
+        }
+        }
+        }
+        }
     }
-}
 
-@Composable
-private fun SectionHeader(text: String) {
+    @Composable
+    private fun SectionHeader(text: String) {
     Text(
         text = text,
         style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),

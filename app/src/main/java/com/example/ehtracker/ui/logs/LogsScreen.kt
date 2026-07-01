@@ -1,5 +1,6 @@
 package com.example.ehtracker.ui.logs
 
+import android.app.DatePickerDialog
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -19,6 +20,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
@@ -32,13 +35,15 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.SecondaryTabRow
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
-import androidx.compose.material3.TabRowDefaults
-import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.rememberSwipeToDismissBoxState
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -49,6 +54,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -56,16 +63,12 @@ import androidx.compose.ui.unit.dp
 import com.example.ehtracker.data.model.Expense
 import com.example.ehtracker.data.model.ExpenseCategory
 import com.example.ehtracker.data.model.Habit
-import com.example.ehtracker.ui.theme.CategoryBills
-import com.example.ehtracker.ui.theme.CategoryEntertainment
-import com.example.ehtracker.ui.theme.CategoryFood
-import com.example.ehtracker.ui.theme.CategoryHealth
-import com.example.ehtracker.ui.theme.CategoryOther
-import com.example.ehtracker.ui.theme.CategoryShopping
-import com.example.ehtracker.ui.theme.CategoryTransport
-import com.example.ehtracker.ui.components.ShimmerBox
+import com.example.ehtracker.data.model.HabitIcons
+import com.example.ehtracker.data.model.Income
+import com.example.ehtracker.data.model.Transaction
+import com.example.ehtracker.data.model.toExpense
+import com.example.ehtracker.data.model.toIncome
 import com.example.ehtracker.ui.components.ShimmerExpenseRow
-import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -73,155 +76,154 @@ import java.time.format.DateTimeFormatter
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LogsScreen(viewModel: LogsViewModel) {
-    val selectedTab by viewModel.selectedTab.collectAsState()
-    val expenses by viewModel.expenses.collectAsState()
-    val habits by viewModel.habits.collectAsState()
-    val currency by viewModel.currency.collectAsState()
-    val editingExpense by viewModel.editingExpense.collectAsState()
-    val editingHabit by viewModel.editingHabit.collectAsState()
-    val searchQuery by viewModel.searchQuery.collectAsState()
-    val isLoading by viewModel.isLoading.collectAsState()
-    val tabs = listOf("Habits", "Expenses")
+    val state by viewModel.uiState.collectAsState()
+    val tabs = listOf("Habits", "Transactions")
 
-    var deleteTarget by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
-
-    Column(
+    PullToRefreshBox(
+        isRefreshing = state.isRefreshing,
+        onRefresh = { viewModel.refresh() },
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 16.dp, vertical = 8.dp)
     ) {
-        Text(
-            text = "History",
-            style = MaterialTheme.typography.displayLarge.copy(fontWeight = FontWeight.Bold),
-            color = MaterialTheme.colorScheme.onBackground
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        OutlinedTextField(
-            value = searchQuery,
-            onValueChange = { viewModel.updateSearch(it) },
-            placeholder = { Text("Search expenses...") },
-            leadingIcon = {
-                Icon(
-                    Icons.Filled.Search,
-                    contentDescription = "Search",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            },
-            singleLine = true,
-            shape = RoundedCornerShape(8.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                unfocusedBorderColor = MaterialTheme.colorScheme.outline
-            ),
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        TabRow(
-            selectedTabIndex = selectedTab,
-            containerColor = MaterialTheme.colorScheme.surface,
-            contentColor = MaterialTheme.colorScheme.primary,
-            indicator = { tabPositions ->
-                if (selectedTab < tabPositions.size) {
-                    TabRowDefaults.SecondaryIndicator(
-                        modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
-                        height = 2.dp,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-            },
-            divider = {}
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
-            tabs.forEachIndexed { index, title ->
-                Tab(
-                    selected = selectedTab == index,
-                    onClick = { viewModel.selectTab(index) },
-                    text = {
-                        Text(
-                            text = title,
-                            style = MaterialTheme.typography.labelLarge.copy(
-                                fontWeight = if (selectedTab == index) FontWeight.SemiBold else FontWeight.Normal
-                            )
+            Text(
+                text = "History",
+                style = MaterialTheme.typography.displayLarge.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.onBackground
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            OutlinedTextField(
+                value = state.searchQuery,
+                onValueChange = { viewModel.updateSearch(it) },
+                placeholder = { Text("Search habits & expenses...") },
+                leadingIcon = {
+                    Icon(
+                        Icons.Filled.Search,
+                        contentDescription = "Search",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                },
+                singleLine = true,
+                shape = RoundedCornerShape(8.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outline
+                ),
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                SecondaryTabRow(
+                    selectedTabIndex = state.selectedTab,
+                    divider = {}
+                ) {
+                    tabs.forEachIndexed { index, title ->
+                        Tab(
+                            selected = state.selectedTab == index,
+                            onClick = { viewModel.selectTab(index) },
+                            text = {
+                                Text(
+                                    text = title,
+                                    style = MaterialTheme.typography.labelLarge.copy(
+                                        fontWeight = if (state.selectedTab == index) FontWeight.SemiBold else FontWeight.Normal
+                                    )
+                                )
+                            },
+                            selectedContentColor = MaterialTheme.colorScheme.primary,
+                            unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                    },
-                    selectedContentColor = MaterialTheme.colorScheme.primary,
-                    unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                    }
+                }
             }
-        }
 
-        Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
-        if (isLoading) {
-            repeat(5) {
-                ShimmerExpenseRow()
-                Spacer(modifier = Modifier.height(4.dp))
-            }
-        } else {
-        when (selectedTab) {
-            0 -> HabitList(
-                habits = habits,
-                onEdit = { viewModel.showEditHabit(it) },
-                onDelete = { deleteTarget = it to true }
-            )
-            1 -> ExpenseList(
-                expenses = expenses,
-                onEdit = { viewModel.showEditExpense(it) },
-                onDelete = { deleteTarget = it to false },
-                currencySymbol = currency.symbol
-            )
-        }
-        }
-    }
-
-    deleteTarget?.let { (id, isHabit) ->
-        AlertDialog(
-            onDismissRequest = { deleteTarget = null },
-            title = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
                 Text(
-                    text = if (isHabit) "Delete habit?" else "Delete expense?",
-                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold)
-                )
-            },
-            text = {
-                Text(
-                    text = if (isHabit) "This will remove all completion history for this habit."
-                           else "This action cannot be undone.",
-                    style = MaterialTheme.typography.bodyMedium,
+                    text = "\u2190 Swipe to delete",
+                    style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    if (isHabit) viewModel.deleteHabit(id) else viewModel.deleteExpense(id)
-                    deleteTarget = null
-                }) {
-                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                Text(
+                    text = "\u00B7",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = "Tap to edit",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            if (state.isLoading) {
+                repeat(5) {
+                    ShimmerExpenseRow()
+                    Spacer(modifier = Modifier.height(4.dp))
                 }
-            },
-            dismissButton = {
-                TextButton(onClick = { deleteTarget = null }) {
-                    Text("Cancel")
+            } else {
+                when (state.selectedTab) {
+                    0 -> HabitList(
+                        habits = state.habits,
+                        onEdit = { viewModel.showEditHabit(it) },
+                        onDelete = { viewModel.deleteHabit(it) }
+                    )
+                    1 -> TransactionList(
+                        transactions = state.transactions,
+                        onEdit = { viewModel.showEditTransaction(it) },
+                        onDelete = { transaction ->
+                            when (transaction) {
+                                is Transaction.Expense -> viewModel.deleteExpense(transaction.id)
+                                is Transaction.Income -> viewModel.deleteIncome(transaction.id)
+                            }
+                        },
+                        currencySymbol = state.currency.symbol
+                    )
                 }
             }
-        )
+        }
     }
 
-    editingExpense?.let { expense ->
-        EditExpenseSheet(
-            expense = expense,
-            onDismiss = { viewModel.dismissEditExpense() },
-            onSave = { amount, category, note, date ->
-                viewModel.updateExpense(expense.id, amount, category, note, date)
-            },
-            currencySymbol = currency.symbol
-        )
+    state.editingTransaction?.let { transaction ->
+        when (transaction) {
+            is Transaction.Expense -> EditExpenseSheet(
+                expense = transaction.toExpense(),
+                onDismiss = { viewModel.dismissEditExpense() },
+                onSave = { amount, category, note, date ->
+                    viewModel.updateExpense(transaction.id, amount, category, note, date)
+                },
+                currencySymbol = state.currency.symbol
+            )
+            is Transaction.Income -> EditIncomeSheet(
+                income = transaction.toIncome(),
+                onDismiss = { viewModel.dismissEditIncome() },
+                onSave = { amount, note, date ->
+                    viewModel.updateIncome(transaction.id, amount, note, date)
+                },
+                currencySymbol = state.currency.symbol
+            )
+        }
     }
 
-    editingHabit?.let { habit ->
+    state.editingHabit?.let { habit ->
         EditHabitSheet(
             habit = habit,
             onDismiss = { viewModel.dismissEditHabit() },
@@ -238,6 +240,29 @@ private fun HabitList(
     onEdit: (Habit) -> Unit,
     onDelete: (String) -> Unit
 ) {
+    var swipeConfirmHabit by remember { mutableStateOf<Habit?>(null) }
+
+    swipeConfirmHabit?.let { habit ->
+        AlertDialog(
+            onDismissRequest = { swipeConfirmHabit = null },
+            title = { Text("Delete Habit") },
+            text = { Text("Are you sure you want to delete \"${habit.name}\"?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    onDelete(habit.id)
+                    swipeConfirmHabit = null
+                }) {
+                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { swipeConfirmHabit = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
     if (habits.isEmpty()) {
         Box(
             modifier = Modifier
@@ -245,63 +270,100 @@ private fun HabitList(
                 .padding(vertical = 40.dp),
             contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = "No habits tracked yet",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = "\uD83D\uDCCB",
+                    style = MaterialTheme.typography.headlineMedium
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "No habits tracked yet",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
         return
     }
 
     LazyColumn {
         items(habits, key = { it.id }) { habit ->
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(MaterialTheme.colorScheme.surface)
-                    .clickable { onEdit(habit) }
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically
+            val dismissState = rememberSwipeToDismissBoxState(
+                confirmValueChange = {
+                    if (it == SwipeToDismissBoxValue.EndToStart) {
+                        swipeConfirmHabit = habit
+                        false
+                    } else false
+                }
+            )
+            SwipeToDismissBox(
+                state = dismissState,
+                enableDismissFromStartToEnd = false,
+                enableDismissFromEndToStart = true,
+                backgroundContent = {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFFE53935))
+                            .padding(end = 16.dp),
+                        contentAlignment = Alignment.CenterEnd
+                    ) {
+                        Icon(
+                            Icons.Filled.Delete,
+                            contentDescription = "Delete",
+                            tint = Color.White
+                        )
+                    }
+                }
             ) {
-                Box(
+                Row(
                     modifier = Modifier
-                        .size(32.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primaryContainer),
-                    contentAlignment = Alignment.Center
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.surface)
+                        .clickable { onEdit(habit) }
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primaryContainer),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = habit.icon,
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = habit.name,
+                            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "${habit.currentStreak} day streak",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                     Text(
-                        text = habit.icon,
-                        style = MaterialTheme.typography.bodyLarge
+                        text = "${(habit.completionRate * 100).toInt()}%",
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.primary
                     )
-                }
-                Spacer(modifier = Modifier.width(10.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = habit.name,
-                        style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = "${habit.currentStreak} day streak",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Text(
-                    text = "${(habit.completionRate * 100).toInt()}%",
-                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-                    color = MaterialTheme.colorScheme.primary
-                )
-                IconButton(onClick = { onDelete(habit.id) }) {
-                    Icon(
-                        Icons.Filled.Delete,
-                        contentDescription = "Delete",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(18.dp)
-                    )
+                    IconButton(onClick = { swipeConfirmHabit = habit }) {
+                        Icon(
+                            Icons.Filled.Delete,
+                            contentDescription = "Delete",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
             }
             Spacer(modifier = Modifier.height(4.dp))
@@ -310,78 +372,213 @@ private fun HabitList(
 }
 
 @Composable
-private fun ExpenseList(
-    expenses: List<Expense>,
-    onEdit: (Expense) -> Unit,
-    onDelete: (String) -> Unit,
+private fun TransactionList(
+    transactions: List<Transaction>,
+    onEdit: (Transaction) -> Unit,
+    onDelete: (Transaction) -> Unit,
     currencySymbol: String = "$"
 ) {
-    if (expenses.isEmpty()) {
+    var swipeConfirmTransaction by remember { mutableStateOf<Transaction?>(null) }
+
+    swipeConfirmTransaction?.let { transaction ->
+        val label = when (transaction) {
+            is Transaction.Expense -> "expense"
+            is Transaction.Income -> "income"
+        }
+        AlertDialog(
+            onDismissRequest = { swipeConfirmTransaction = null },
+            title = { Text("Delete $label") },
+            text = { Text("Are you sure you want to delete this $label?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    onDelete(transaction)
+                    swipeConfirmTransaction = null
+                }) {
+                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { swipeConfirmTransaction = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (transactions.isEmpty()) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = 40.dp),
             contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = "No expenses logged yet",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = "\uD83D\uDCB3",
+                    style = MaterialTheme.typography.headlineMedium
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "No transactions logged yet",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
         return
     }
 
-    val grouped = expenses.groupBy { it.date }.toSortedMap(compareByDescending { it })
+    val grouped = transactions.groupBy { it.date }.toSortedMap(compareByDescending { it })
 
     LazyColumn {
-        grouped.forEach { (date, dayExpenses) ->
-            item(key = "header_$date") {
-                Text(
-                    text = date.format(DateTimeFormatter.ofPattern("EEE, MMM d")),
-                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(vertical = 6.dp)
-                )
+        grouped.forEach { (date, dayTransactions) ->
+            val netTotal = dayTransactions.sumOf {
+                when (it) {
+                    is Transaction.Income -> it.amount
+                    is Transaction.Expense -> -it.amount
+                }
             }
-            items(dayExpenses, key = { it.id }) { expense ->
+            item(key = "txn_header_$date") {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(MaterialTheme.colorScheme.surface)
-                        .clickable { onEdit(expense) }
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                        .padding(vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    CategoryIcon(expense.category)
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = expense.note,
-                            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
-                            color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = expense.category.displayName,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
                     Text(
-                        text = "$currencySymbol${"%.2f".format(expense.amount)}",
-                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-                        color = MaterialTheme.colorScheme.onSurface
+                        text = date.format(DateTimeFormatter.ofPattern("EEE, MMM d")),
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f)
                     )
-                    IconButton(onClick = { onDelete(expense.id) }) {
-                        Icon(
-                            Icons.Filled.Delete,
-                            contentDescription = "Delete",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(18.dp)
+                    Text(
+                        text = "${if (netTotal >= 0) "+" else ""}$currencySymbol${"%.2f".format(netTotal)}",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                        color = if (netTotal >= 0) Color(0xFF43A047) else Color(0xFFE53935)
+                    )
+                }
+            }
+            items(dayTransactions, key = {
+                when (it) {
+                    is Transaction.Expense -> "exp_${it.id}"
+                    is Transaction.Income -> "inc_${it.id}"
+                }
+            }) { transaction ->
+                val dismissState = rememberSwipeToDismissBoxState(
+                    confirmValueChange = {
+                        if (it == SwipeToDismissBoxValue.EndToStart) {
+                            swipeConfirmTransaction = transaction
+                            false
+                        } else false
+                    }
+                )
+                SwipeToDismissBox(
+                    state = dismissState,
+                    enableDismissFromStartToEnd = false,
+                    enableDismissFromEndToStart = true,
+                    backgroundContent = {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFFE53935))
+                                .padding(end = 16.dp),
+                            contentAlignment = Alignment.CenterEnd
+                        ) {
+                            Icon(
+                                Icons.Filled.Delete,
+                                contentDescription = "Delete",
+                                tint = Color.White
+                            )
+                        }
+                    }
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.surface)
+                            .clickable { onEdit(transaction) }
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        when (transaction) {
+                            is Transaction.Expense -> {
+                                Box(
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFFE53935).copy(alpha = 0.15f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        Icons.Filled.ArrowDownward,
+                                        contentDescription = "Expense",
+                                        tint = Color(0xFFE53935),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = transaction.note,
+                                        style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = transaction.category.displayName,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            is Transaction.Income -> {
+                                Box(
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFF43A047).copy(alpha = 0.15f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        Icons.Filled.ArrowUpward,
+                                        contentDescription = "Income",
+                                        tint = Color(0xFF43A047),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = transaction.note,
+                                        style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = "Income",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                        Text(
+                            text = "$currencySymbol${"%.2f".format(transaction.amount)}",
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                            color = MaterialTheme.colorScheme.onSurface
                         )
+                        IconButton(onClick = { swipeConfirmTransaction = transaction }) {
+                            Icon(
+                                Icons.Filled.Delete,
+                                contentDescription = "Delete",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
                     }
                 }
                 Spacer(modifier = Modifier.height(4.dp))
@@ -403,6 +600,8 @@ private fun EditExpenseSheet(
     var note by remember { mutableStateOf(expense.note) }
     var selectedCategory by remember { mutableStateOf(expense.category) }
     var categoryExpanded by remember { mutableStateOf(false) }
+    var selectedDate by remember { mutableStateOf(expense.date) }
+    val context = LocalContext.current
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -498,6 +697,44 @@ private fun EditExpenseSheet(
                 modifier = Modifier.fillMaxWidth()
             )
 
+            Spacer(modifier = Modifier.height(12.dp))
+
+            OutlinedTextField(
+                value = selectedDate.format(DateTimeFormatter.ofPattern("EEE, MMM d, yyyy")),
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("Date") },
+                trailingIcon = {
+                    Text(
+                        text = "Change",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .padding(end = 8.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .clickable {
+                                DatePickerDialog(
+                                    context,
+                                    { _, year, month, day ->
+                                        selectedDate = LocalDate.of(year, month + 1, day)
+                                    },
+                                    selectedDate.year,
+                                    selectedDate.monthValue - 1,
+                                    selectedDate.dayOfMonth
+                                ).show()
+                            }
+                            .padding(horizontal = 4.dp, vertical = 2.dp)
+                    )
+                },
+                singleLine = true,
+                shape = RoundedCornerShape(8.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outline
+                ),
+                modifier = Modifier.fillMaxWidth()
+            )
+
             Spacer(modifier = Modifier.height(16.dp))
 
             Row(
@@ -512,7 +749,7 @@ private fun EditExpenseSheet(
                     onClick = {
                         val parsedAmount = amount.toDoubleOrNull()
                         if (parsedAmount != null && parsedAmount > 0) {
-                            onSave(parsedAmount, selectedCategory, note.ifBlank { selectedCategory.displayName }, expense.date)
+                            onSave(parsedAmount, selectedCategory, note.ifBlank { selectedCategory.displayName }, selectedDate)
                         }
                     },
                     enabled = amount.toDoubleOrNull() != null && (amount.toDoubleOrNull() ?: 0.0) > 0
@@ -523,8 +760,6 @@ private fun EditExpenseSheet(
         }
     }
 }
-
-private val icons = listOf("\uD83D\uDCD6", "\uD83D\uDCAA", "\uD83E\uDDD8", "☕", "✍\uFE0F", "\uD83C\uDFC3", "\uD83D\uDCA7", "\uD83C\uDFB5", "\uD83E\uDDF9", "\uD83E\uDD57", "\uD83D\uDE34", "\uD83D\uDCF5")
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -582,7 +817,7 @@ private fun EditHabitSheet(
             Row(
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                icons.take(8).forEach { icon ->
+                HabitIcons.take(8).forEach { icon ->
                     val isSelected = icon == selectedIcon
                     Box(
                         modifier = Modifier
@@ -662,28 +897,130 @@ private fun EditHabitSheet(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun CategoryIcon(category: ExpenseCategory) {
-    val bgColor = when (category) {
-        ExpenseCategory.FOOD -> CategoryFood
-        ExpenseCategory.TRANSPORT -> CategoryTransport
-        ExpenseCategory.SHOPPING -> CategoryShopping
-        ExpenseCategory.BILLS -> CategoryBills
-        ExpenseCategory.HEALTH -> CategoryHealth
-        ExpenseCategory.ENTERTAINMENT -> CategoryEntertainment
-        ExpenseCategory.OTHER -> CategoryOther
-    }
+private fun EditIncomeSheet(
+    income: Income,
+    onDismiss: () -> Unit,
+    onSave: (Double, String, LocalDate) -> Unit,
+    currencySymbol: String = "$"
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var amount by remember { mutableStateOf("%.2f".format(income.amount)) }
+    var note by remember { mutableStateOf(income.note) }
+    var selectedDate by remember { mutableStateOf(income.date) }
+    val context = LocalContext.current
 
-    Box(
-        modifier = Modifier
-            .size(32.dp)
-            .clip(CircleShape)
-            .background(bgColor.copy(alpha = 0.2f)),
-        contentAlignment = Alignment.Center
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp)
     ) {
-        Text(
-            text = category.icon,
-            style = MaterialTheme.typography.bodyMedium
-        )
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 32.dp)
+        ) {
+            Text(
+                text = "Edit Income",
+                style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onSurface
+            )
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            OutlinedTextField(
+                value = amount,
+                onValueChange = { amount = it.filter { c -> c.isDigit() || c == '.' } },
+                label = { Text("Amount") },
+                prefix = { Text(currencySymbol) },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                singleLine = true,
+                shape = RoundedCornerShape(8.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outline
+                ),
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            OutlinedTextField(
+                value = note,
+                onValueChange = { note = it },
+                label = { Text("Note") },
+                singleLine = true,
+                shape = RoundedCornerShape(8.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outline
+                ),
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            OutlinedTextField(
+                value = selectedDate.format(DateTimeFormatter.ofPattern("EEE, MMM d, yyyy")),
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("Date") },
+                trailingIcon = {
+                    Text(
+                        text = "Change",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .padding(end = 8.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .clickable {
+                                DatePickerDialog(
+                                    context,
+                                    { _, year, month, day ->
+                                        selectedDate = LocalDate.of(year, month + 1, day)
+                                    },
+                                    selectedDate.year,
+                                    selectedDate.monthValue - 1,
+                                    selectedDate.dayOfMonth
+                                ).show()
+                            }
+                            .padding(horizontal = 4.dp, vertical = 2.dp)
+                    )
+                },
+                singleLine = true,
+                shape = RoundedCornerShape(8.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outline
+                ),
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                TextButton(onClick = onDismiss) {
+                    Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                TextButton(
+                    onClick = {
+                        val parsedAmount = amount.toDoubleOrNull()
+                        if (parsedAmount != null && parsedAmount > 0) {
+                            onSave(parsedAmount, note.ifBlank { "Income" }, selectedDate)
+                        }
+                    },
+                    enabled = amount.toDoubleOrNull() != null && (amount.toDoubleOrNull() ?: 0.0) > 0
+                ) {
+                    Text("Save", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
     }
 }
