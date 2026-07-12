@@ -23,5 +23,6 @@ import androidx.room.PrimaryKey
 data class HabitCompletionEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val habitId: String,
-    val date: Long
+    val date: Long,
+    val value: Double? = null
 )

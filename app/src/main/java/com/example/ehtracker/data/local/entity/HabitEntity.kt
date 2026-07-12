@@ -9,5 +9,7 @@ data class HabitEntity(
     val name: String,
     val icon: String,
     val targetDaysPerWeek: Int = 7,
+    val isNumeric: Boolean = false,
+    val unit: String = "",
     val createdAt: Long = System.currentTimeMillis()
 )

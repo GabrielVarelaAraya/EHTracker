@@ -1,11 +1,17 @@
 package com.example.ehtracker.ui.logs
 
 import android.app.DatePickerDialog
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -36,6 +42,8 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.SecondaryTabRow
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -64,6 +72,7 @@ import com.example.ehtracker.data.model.Expense
 import com.example.ehtracker.data.model.ExpenseCategory
 import com.example.ehtracker.data.model.Habit
 import com.example.ehtracker.data.model.HabitIcons
+import com.example.ehtracker.ui.theme.HabitIcon
 import com.example.ehtracker.data.model.Income
 import com.example.ehtracker.data.model.Transaction
 import com.example.ehtracker.data.model.toExpense
@@ -79,11 +88,8 @@ fun LogsScreen(viewModel: LogsViewModel) {
     val state by viewModel.uiState.collectAsState()
     val tabs = listOf("Habits", "Transactions")
 
-    PullToRefreshBox(
-        isRefreshing = state.isRefreshing,
-        onRefresh = { viewModel.refresh() },
-        modifier = Modifier
-            .fillMaxSize()
+    Box(
+        modifier = Modifier.fillMaxSize()
     ) {
         Column(
             modifier = Modifier
@@ -227,8 +233,8 @@ fun LogsScreen(viewModel: LogsViewModel) {
         EditHabitSheet(
             habit = habit,
             onDismiss = { viewModel.dismissEditHabit() },
-            onSave = { name, icon, targetDays ->
-                viewModel.updateHabit(habit.id, name, icon, targetDays)
+            onSave = { name, icon, targetDays, isNumeric, unit ->
+                viewModel.updateHabit(habit.id, name, icon, targetDays, isNumeric, unit)
             }
         )
     }
@@ -288,19 +294,27 @@ private fun HabitList(
 
     LazyColumn {
         items(habits, key = { it.id }) { habit ->
-            val dismissState = rememberSwipeToDismissBoxState(
-                confirmValueChange = {
-                    if (it == SwipeToDismissBoxValue.EndToStart) {
-                        swipeConfirmHabit = habit
-                        false
-                    } else false
-                }
-            )
-            SwipeToDismissBox(
-                state = dismissState,
-                enableDismissFromStartToEnd = false,
-                enableDismissFromEndToStart = true,
-                backgroundContent = {
+            val habitIndex = habits.indexOf(habit)
+            Box(modifier = Modifier.animateItem()) {
+                AnimatedVisibility(
+                    visible = true,
+                    enter = fadeIn(animationSpec = tween(300, delayMillis = habitIndex * 40)) +
+                            slideInVertically(animationSpec = tween(300, delayMillis = habitIndex * 40)) { it / 4 }
+                ) {
+                    Column {
+                        val dismissState = rememberSwipeToDismissBoxState(
+                            confirmValueChange = {
+                                if (it == SwipeToDismissBoxValue.EndToStart) {
+                                    swipeConfirmHabit = habit
+                                    false
+                                } else false
+                            }
+                        )
+                        SwipeToDismissBox(
+                            state = dismissState,
+                            enableDismissFromStartToEnd = false,
+                            enableDismissFromEndToStart = true,
+                            backgroundContent = {
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
@@ -333,9 +347,9 @@ private fun HabitList(
                             .background(MaterialTheme.colorScheme.primaryContainer),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = habit.icon,
-                            style = MaterialTheme.typography.bodyLarge
+                        HabitIcon(
+                            emoji = habit.icon,
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                     Spacer(modifier = Modifier.width(10.dp))
@@ -363,6 +377,9 @@ private fun HabitList(
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(18.dp)
                         )
+                    }
+                        }
+                        }
                     }
                 }
             }
@@ -464,18 +481,26 @@ private fun TransactionList(
                     is Transaction.Income -> "inc_${it.id}"
                 }
             }) { transaction ->
-                val dismissState = rememberSwipeToDismissBoxState(
-                    confirmValueChange = {
-                        if (it == SwipeToDismissBoxValue.EndToStart) {
-                            swipeConfirmTransaction = transaction
-                            false
-                        } else false
-                    }
-                )
-                SwipeToDismissBox(
-                    state = dismissState,
-                    enableDismissFromStartToEnd = false,
-                    enableDismissFromEndToStart = true,
+                val txnIndex = dayTransactions.indexOf(transaction)
+                Box(modifier = Modifier.animateItem()) {
+                    AnimatedVisibility(
+                        visible = true,
+                        enter = fadeIn(animationSpec = tween(300, delayMillis = txnIndex * 30)) +
+                                slideInVertically(animationSpec = tween(300, delayMillis = txnIndex * 30)) { it / 4 }
+                    ) {
+                        Column {
+                            val dismissState = rememberSwipeToDismissBoxState(
+                                confirmValueChange = {
+                                    if (it == SwipeToDismissBoxValue.EndToStart) {
+                                        swipeConfirmTransaction = transaction
+                                        false
+                                    } else false
+                                }
+                            )
+                            SwipeToDismissBox(
+                                state = dismissState,
+                                enableDismissFromStartToEnd = false,
+                                enableDismissFromEndToStart = true,
                     backgroundContent = {
                         Box(
                             modifier = Modifier
@@ -581,7 +606,10 @@ private fun TransactionList(
                         }
                     }
                 }
-                Spacer(modifier = Modifier.height(4.dp))
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(4.dp))
             }
         }
     }
@@ -766,12 +794,14 @@ private fun EditExpenseSheet(
 private fun EditHabitSheet(
     habit: Habit,
     onDismiss: () -> Unit,
-    onSave: (String, String, Int) -> Unit
+    onSave: (String, String, Int, Boolean, String) -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var name by remember { mutableStateOf(habit.name) }
     var selectedIcon by remember { mutableStateOf(habit.icon) }
     var targetDays by remember { mutableIntStateOf(habit.targetDaysPerWeek) }
+    var isNumeric by remember { mutableStateOf(habit.isNumeric) }
+    var unit by remember { mutableStateOf(habit.unit) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -876,6 +906,43 @@ private fun EditHabitSheet(
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Track numeric value",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Switch(
+                    checked = isNumeric,
+                    onCheckedChange = { isNumeric = it },
+                    colors = SwitchDefaults.colors(
+                        checkedTrackColor = MaterialTheme.colorScheme.primary
+                    )
+                )
+            }
+
+            if (isNumeric) {
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = unit,
+                    onValueChange = { unit = it },
+                    label = { Text("Unit (e.g. hours)") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(8.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outline
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.End
             ) {
                 TextButton(onClick = onDismiss) {
@@ -885,7 +952,7 @@ private fun EditHabitSheet(
                 TextButton(
                     onClick = {
                         if (name.isNotBlank()) {
-                            onSave(name.trim(), selectedIcon, targetDays)
+                            onSave(name.trim(), selectedIcon, targetDays, isNumeric, unit.trim())
                         }
                     },
                     enabled = name.isNotBlank()

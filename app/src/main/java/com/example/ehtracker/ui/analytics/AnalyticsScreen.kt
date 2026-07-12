@@ -1,5 +1,6 @@
 package com.example.ehtracker.ui.analytics
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -21,19 +22,32 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Size
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.ehtracker.ui.components.SectionHeader
+import com.example.ehtracker.ui.components.BudgetVsRealChart
 import com.example.ehtracker.ui.components.AiInsightsCard
+import com.example.ehtracker.ui.components.BudgetSetupSheet
 import com.example.ehtracker.ui.components.CategoryBar
 import com.example.ehtracker.ui.components.MiniLineChart
+import com.example.ehtracker.ui.components.SavingsRateChart
 import com.example.ehtracker.ui.components.ProgressRing
 import com.example.ehtracker.ui.components.ShimmerBox
 import com.example.ehtracker.ui.components.ShimmerCard
@@ -46,26 +60,27 @@ import com.example.ehtracker.ui.theme.CategoryOther
 import com.example.ehtracker.ui.theme.CategoryShopping
 import com.example.ehtracker.ui.theme.CategoryTransport
 import com.example.ehtracker.data.model.ExpenseCategory
+import com.example.ehtracker.ui.theme.HabitIcon
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 fun AnalyticsScreen(viewModel: AnalyticsViewModel) {
     val dailyData by viewModel.dailyExpenses.collectAsState()
+    val dailySavingsRate by viewModel.dailySavingsRate.collectAsState()
+    val savingsRateInsights by viewModel.savingsRateInsights.collectAsState()
     val categoryData by viewModel.expensesByCategory.collectAsState()
     val habitRate by viewModel.habitCompletionRate.collectAsState()
     val rangeTotal by viewModel.rangeTotal.collectAsState()
     val selectedRange by viewModel.selectedRange.collectAsState()
     val habitsSummary by viewModel.habitsSummary.collectAsState()
     val currency by viewModel.currency.collectAsState()
+    val budgetStatus by viewModel.budgetStatus.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
-    val isRefreshing by viewModel.isRefreshing.collectAsState()
-    val insights = viewModel.aiInsights()
+    val insights by viewModel.aiInsights.collectAsState()
     val sym = currency.symbol
+    var showBudgetSetup by remember { mutableStateOf(false) }
 
-    PullToRefreshBox(
-        isRefreshing = isRefreshing,
-        onRefresh = { viewModel.refresh() },
-        modifier = Modifier.fillMaxSize()
-    ) {
+    Box(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -73,7 +88,7 @@ fun AnalyticsScreen(viewModel: AnalyticsViewModel) {
         ) {
             Text(
                 text = "Insights",
-                style = MaterialTheme.typography.displayLarge.copy(fontWeight = FontWeight.Bold),
+                style = MaterialTheme.typography.displayLarge,
                 color = MaterialTheme.colorScheme.onBackground
             )
 
@@ -120,13 +135,25 @@ fun AnalyticsScreen(viewModel: AnalyticsViewModel) {
                 initialPage = DateRange.entries.indexOf(selectedRange),
                 pageCount = { DateRange.entries.size }
             )
+            var isProgrammaticScroll by remember { mutableStateOf(false) }
 
             LaunchedEffect(selectedRange) {
-                pagerState.animateScrollToPage(DateRange.entries.indexOf(selectedRange))
+                val targetPage = DateRange.entries.indexOf(selectedRange)
+                val distance = kotlin.math.abs(targetPage - pagerState.currentPage)
+                if (pagerState.currentPage != targetPage) {
+                    isProgrammaticScroll = true
+                    pagerState.animateScrollToPage(
+                        page = targetPage,
+                        animationSpec = tween(durationMillis = (distance * 250).coerceAtMost(600))
+                    )
+                    isProgrammaticScroll = false
+                }
             }
 
             LaunchedEffect(pagerState.currentPage) {
-                viewModel.selectRange(DateRange.entries[pagerState.currentPage])
+                if (!isProgrammaticScroll) {
+                    viewModel.selectRange(DateRange.entries[pagerState.currentPage])
+                }
             }
 
             HorizontalPager(
@@ -165,7 +192,13 @@ fun AnalyticsScreen(viewModel: AnalyticsViewModel) {
             ShimmerInsightRow()
             ShimmerInsightRow()
             ShimmerInsightRow()
-        } else {
+        }
+
+        AnimatedVisibility(
+            visible = !isLoading,
+            enter = fadeIn(animationSpec = androidx.compose.animation.core.tween(400, delayMillis = 100))
+        ) {
+            Column {
             Row(
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -232,9 +265,68 @@ fun AnalyticsScreen(viewModel: AnalyticsViewModel) {
                                 color = categoryColors[cat] ?: CategoryOther,
                                 currencySymbol = sym
                             )
+                            val budget = budgetStatus[cat]
+                            if (budget != null) {
+                                val (spent, limit) = budget
+                                val budgetFraction = (spent / limit).coerceIn(0.0, 1.0).toFloat()
+                                val budgetColor = if (spent > limit) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                                val trackColor = MaterialTheme.colorScheme.surfaceVariant
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = 70.dp, end = 0.dp, bottom = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Canvas(modifier = Modifier.weight(1f).height(4.dp)) {
+                                        drawRoundRect(
+                                            color = trackColor,
+                                            size = size,
+                                            cornerRadius = CornerRadius(2.dp.toPx())
+                                        )
+                                        drawRoundRect(
+                                            color = budgetColor,
+                                            size = Size(size.width * budgetFraction, size.height),
+                                            cornerRadius = CornerRadius(2.dp.toPx())
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "$sym${"%.0f".format(spent)}/$sym${"%.0f".format(limit)}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = budgetColor
+                                    )
+                                }
+                            }
                         }
                     }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    TextButton(
+                        onClick = { showBudgetSetup = true },
+                        modifier = Modifier.align(Alignment.End)
+                    ) {
+                        Text(
+                            text = if (budgetStatus.isEmpty()) "Set budgets" else "Edit budgets",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
+            }
+
+            if (budgetStatus.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(16.dp))
+                SectionHeader("Budget vs Actual")
+                Spacer(modifier = Modifier.height(8.dp))
+                BudgetVsRealChart(
+                    budgets = budgetStatus,
+                    actuals = categoryData,
+                    currencySymbol = sym,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.surface)
+                        .padding(12.dp)
+                )
             }
 
             Spacer(modifier = Modifier.height(20.dp))
@@ -252,10 +344,55 @@ fun AnalyticsScreen(viewModel: AnalyticsViewModel) {
                     .padding(12.dp)
             )
 
+            Spacer(modifier = Modifier.height(16.dp))
+            SectionHeader("Savings Rate")
+            Spacer(modifier = Modifier.height(8.dp))
+            SavingsRateChart(
+                data = dailySavingsRate,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surface)
+                    .padding(12.dp)
+            )
+
+            if (savingsRateInsights.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.surface)
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    savingsRateInsights.forEach { insight ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.Top
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .padding(top = 4.dp)
+                                    .size(6.dp)
+                                    .clip(CircleShape)
+                                    .background(if (insight.isPositive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = insight.text,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                }
+            }
+
             if (habitsSummary.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(20.dp))
 
-                SectionHeader("Habits This Week")
+                SectionHeader("Habits This ${selectedRange.label}")
                 Spacer(modifier = Modifier.height(8.dp))
                 Column(
                     modifier = Modifier
@@ -278,7 +415,7 @@ fun AnalyticsScreen(viewModel: AnalyticsViewModel) {
                                     .background(MaterialTheme.colorScheme.primaryContainer),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text(text = summary.habit.icon, style = MaterialTheme.typography.bodySmall)
+                                HabitIcon(emoji = summary.habit.icon, modifier = Modifier.size(18.dp))
                             }
                             Spacer(modifier = Modifier.width(10.dp))
                             Column(modifier = Modifier.weight(1f)) {
@@ -294,7 +431,7 @@ fun AnalyticsScreen(viewModel: AnalyticsViewModel) {
                                 )
                             }
                             Text(
-                                text = "${(summary.completionRateThisWeek * 100).toInt()}%",
+                                text = "${(summary.completionRate * 100).toInt()}%",
                                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
                                 color = MaterialTheme.colorScheme.primary
                             )
@@ -317,11 +454,16 @@ fun AnalyticsScreen(viewModel: AnalyticsViewModel) {
         }
     }
 
-    @Composable
-    private fun SectionHeader(text: String) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-        color = MaterialTheme.colorScheme.onSurfaceVariant
-    )
+    if (showBudgetSetup) {
+        val existingBudgets = budgetStatus.mapValues { it.value.second }
+        BudgetSetupSheet(
+            budgets = existingBudgets,
+            currencySymbol = sym,
+            onDismiss = { showBudgetSetup = false },
+            onSave = { cat, limit -> viewModel.setBudget(cat, limit) },
+            onDelete = { cat -> viewModel.deleteBudget(cat) }
+        )
+    }
 }
+
+

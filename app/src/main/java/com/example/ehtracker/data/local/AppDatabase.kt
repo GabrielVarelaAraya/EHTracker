@@ -32,7 +32,7 @@ import com.example.ehtracker.data.local.entity.PreferencesEntity
         BudgetEntity::class,
         PreferencesEntity::class
     ],
-    version = 8,
+    version = 9,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -60,6 +60,12 @@ abstract class AppDatabase : RoomDatabase() {
             db.execSQL("ALTER TABLE preferences ADD COLUMN notificationHour INTEGER NOT NULL DEFAULT 20")
             db.execSQL("ALTER TABLE preferences ADD COLUMN notificationMinute INTEGER NOT NULL DEFAULT 0")
             db.execSQL("ALTER TABLE preferences ADD COLUMN notificationsEnabled INTEGER NOT NULL DEFAULT 1")
+        }
+
+        val MIGRATION_8_9 = Migration(8, 9) { db ->
+            db.execSQL("ALTER TABLE habits ADD COLUMN isNumeric INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE habits ADD COLUMN unit TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE habit_completions ADD COLUMN value REAL DEFAULT NULL")
         }
     }
 }

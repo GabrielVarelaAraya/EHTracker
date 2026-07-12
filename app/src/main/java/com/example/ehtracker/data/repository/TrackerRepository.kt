@@ -14,6 +14,9 @@ import com.example.ehtracker.data.model.Expense
 import com.example.ehtracker.data.model.ExpenseCategory
 import com.example.ehtracker.data.model.Habit
 import com.example.ehtracker.data.model.Income
+import com.example.ehtracker.data.model.Transaction
+import com.example.ehtracker.data.model.toTransaction
+import android.util.Log
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
@@ -48,38 +51,71 @@ class TrackerRepository(private val database: AppDatabase) {
         }
     }
 
-    suspend fun toggleHabitCompletion(habitId: String, date: LocalDate) {
+    suspend fun toggleHabitCompletion(habitId: String, date: LocalDate, value: Double? = null) {
         val dateLong = date.toEpochMillis()
         val existing = completionDao.getByHabitIdAndDate(habitId, dateLong)
         if (existing != null) {
-            completionDao.deleteByHabitIdAndDate(habitId, dateLong)
+            if (value != null) {
+                completionDao.insert(existing.copy(value = value))
+            } else {
+                completionDao.deleteByHabitIdAndDate(habitId, dateLong)
+            }
         } else {
             completionDao.insert(
                 HabitCompletionEntity(
                     habitId = habitId,
-                    date = dateLong
+                    date = dateLong,
+                    value = if (value != null) value else null
                 )
             )
         }
     }
 
-    suspend fun addHabit(name: String, icon: String, targetDaysPerWeek: Int = 7) {
+    suspend fun setHabitValue(habitId: String, date: LocalDate, value: Double) {
+        val dateLong = date.toEpochMillis()
+        val existing = completionDao.getByHabitIdAndDate(habitId, dateLong)
+        if (existing != null) {
+            completionDao.insert(existing.copy(value = value))
+        } else {
+            completionDao.insert(
+                HabitCompletionEntity(
+                    habitId = habitId,
+                    date = dateLong,
+                    value = value
+                )
+            )
+        }
+    }
+
+    suspend fun addHabit(name: String, icon: String, targetDaysPerWeek: Int = 7, isNumeric: Boolean = false, unit: String = "") {
         habitDao.insert(
             HabitEntity(
                 id = UUID.randomUUID().toString(),
                 name = name,
                 icon = icon,
-                targetDaysPerWeek = targetDaysPerWeek
+                targetDaysPerWeek = targetDaysPerWeek,
+                isNumeric = isNumeric,
+                unit = unit
             )
         )
     }
 
-    suspend fun updateHabit(id: String, name: String, icon: String, targetDaysPerWeek: Int) {
-        habitDao.update(id, name, icon, targetDaysPerWeek)
+    suspend fun updateHabit(id: String, name: String, icon: String, targetDaysPerWeek: Int, isNumeric: Boolean = false, unit: String = "") {
+        habitDao.update(id, name, icon, targetDaysPerWeek, isNumeric, unit)
     }
 
     suspend fun deleteHabit(id: String) {
         habitDao.deleteById(id)
+    }
+
+    suspend fun incompleteHabitsTodayCount(): Int {
+        val today = LocalDate.now()
+        val startOfDay = today.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val endOfDay = today.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val habits = habitDao.getAll().first()
+        val todayCompletions = completionDao.getByDateRange(startOfDay, endOfDay).first()
+        val completedHabitIds = todayCompletions.map { it.habitId }.toSet()
+        return habits.count { it.id !in completedHabitIds }
     }
 
     // --- Expenses ---
@@ -128,34 +164,6 @@ class TrackerRepository(private val database: AppDatabase) {
         expenseDao.deleteById(id)
     }
 
-    suspend fun getExpenseEntityById(id: String): ExpenseEntity? = expenseDao.getById(id)
-
-    suspend fun getHabitEntityById(id: String): HabitEntity? = habitDao.getById(id)
-
-    suspend fun getHabitCompletionsByHabitId(id: String): List<HabitCompletionEntity> =
-        completionDao.getByHabitIdOnce(id)
-
-    suspend fun getIncomeEntityById(id: String): IncomeEntity? = incomeDao.getById(id)
-
-    suspend fun deleteExpenseWithUndo(id: String): ExpenseEntity? =
-        expenseDao.getAndDelete(id)
-
-    suspend fun restoreExpense(entity: ExpenseEntity) {
-        expenseDao.insert(entity)
-    }
-
-    suspend fun deleteHabitWithUndo(id: String): Pair<HabitEntity, List<HabitCompletionEntity>>? {
-        val habit = habitDao.getById(id) ?: return null
-        val completions = completionDao.getByHabitIdOnce(id)
-        habitDao.deleteById(id)
-        return habit to completions
-    }
-
-    suspend fun restoreHabit(habit: HabitEntity, completions: List<HabitCompletionEntity>) {
-        habitDao.insert(habit)
-        completions.forEach { completionDao.insert(it) }
-    }
-
     // --- Income ---
 
     fun incomes(): Flow<List<Income>> {
@@ -192,13 +200,6 @@ class TrackerRepository(private val database: AppDatabase) {
 
     suspend fun updateIncome(id: String, amount: Double, note: String, date: LocalDate) {
         incomeDao.update(id, amount, note, date.toEpochMillis())
-    }
-
-    suspend fun deleteIncomeWithUndo(id: String): IncomeEntity? =
-        incomeDao.getAndDelete(id)
-
-    suspend fun restoreIncome(entity: IncomeEntity) {
-        incomeDao.insert(entity)
     }
 
     // --- Balance ---
@@ -248,9 +249,10 @@ class TrackerRepository(private val database: AppDatabase) {
     fun budgetStatus(): Flow<Map<ExpenseCategory, Pair<Double, Double>>> {
         val today = LocalDate.now()
         val startOfMonth = today.withDayOfMonth(1)
+        val endOfMonth = startOfMonth.withDayOfMonth(startOfMonth.lengthOfMonth())
         return combine(
             budgetDao.getAll(),
-            expenseDao.getByDateRange(startOfMonth.toEpochMillis(), today.toEpochMillis())
+            expenseDao.getByDateRange(startOfMonth.toEpochMillis(), endOfMonth.toEpochMillis())
         ) { budgets, expenses ->
             val spentByCategory = expenses.groupBy { ExpenseCategory.valueOf(it.category) }
                 .mapValues { entry -> entry.value.sumOf { it.amount } }
@@ -310,22 +312,44 @@ class TrackerRepository(private val database: AppDatabase) {
 
     // --- Analytics ---
 
-    fun todayTotalExpenses(): Flow<Double> {
-        val today = LocalDate.now()
-        return expenseDao.sumByDateRange(today.toEpochMillis(), today.toEpochMillis()).map { it ?: 0.0 }
+    data class ExpenseTotals(val today: Double, val week: Double, val month: Double)
+
+    fun expenseTotals(): Flow<ExpenseTotals> {
+        return expenseDao.getAll().map { expenses ->
+            val today = LocalDate.now()
+            val todayMillis = today.toEpochMillis()
+            val startOfWeek = today.minusDays(today.dayOfWeek.value.toLong() - 1)
+            val endOfWeek = startOfWeek.plusDays(6)
+            val startOfMonth = today.withDayOfMonth(1)
+            val endOfMonth = startOfMonth.withDayOfMonth(startOfMonth.lengthOfMonth())
+
+            Log.d("TrackerRepo", "=== expenseTotals ===")
+            Log.d("TrackerRepo", "today=$today (epoch=$todayMillis) dayOfWeek=${today.dayOfWeek}")
+            Log.d("TrackerRepo", "weekRange=$startOfWeek..$endOfWeek monthRange=$startOfMonth..$endOfMonth")
+            Log.d("TrackerRepo", "expense count=${expenses.size}")
+            expenses.forEach { e ->
+                val date = e.date.toLocalDate()
+                Log.d("TrackerRepo", "  expense id=${e.id} amount=${e.amount} storedEpoch=${e.date} date=$date")
+            }
+
+            val todaySum = expenses.filter { it.date == todayMillis }.sumOf { it.amount }
+            val weekSum = expenses.filter {
+                val d = it.date
+                d >= startOfWeek.toEpochMillis() && d <= endOfWeek.toEpochMillis()
+            }.sumOf { it.amount }
+            val monthSum = expenses.filter {
+                val d = it.date
+                d >= startOfMonth.toEpochMillis() && d <= endOfMonth.toEpochMillis()
+            }.sumOf { it.amount }
+
+            Log.d("TrackerRepo", "todaySum=$todaySum weekSum=$weekSum monthSum=$monthSum")
+            ExpenseTotals(todaySum, weekSum, monthSum)
+        }
     }
 
-    fun thisWeekExpenses(): Flow<Double> {
-        val today = LocalDate.now()
-        val startOfWeek = today.minusDays(today.dayOfWeek.value.toLong() - 1)
-        return expenseDao.sumByDateRange(startOfWeek.toEpochMillis(), today.toEpochMillis()).map { it ?: 0.0 }
-    }
+    fun thisWeekExpenses(): Flow<Double> = expenseTotals().map { it.week }
 
-    fun thisMonthExpenses(): Flow<Double> {
-        val today = LocalDate.now()
-        val startOfMonth = today.withDayOfMonth(1)
-        return expenseDao.sumByDateRange(startOfMonth.toEpochMillis(), today.toEpochMillis()).map { it ?: 0.0 }
-    }
+    fun thisMonthExpenses(): Flow<Double> = expenseTotals().map { it.month }
 
     fun expensesForRange(startDate: LocalDate, endDate: LocalDate): Flow<List<Expense>> {
         return expenseDao.getByDateRange(startDate.toEpochMillis(), endDate.toEpochMillis()).map { list ->
@@ -333,11 +357,31 @@ class TrackerRepository(private val database: AppDatabase) {
         }
     }
 
-    fun dailyExpensesForRange(startDate: LocalDate, endDate: LocalDate): Flow<Map<Int, Double>> {
+    private fun fillMissingDates(data: Map<LocalDate, Double>, start: LocalDate, end: LocalDate): Map<LocalDate, Double> {
+        val result = mutableMapOf<LocalDate, Double>()
+        var current = start
+        while (!current.isAfter(end)) {
+            result[current] = data[current] ?: 0.0
+            current = current.plusDays(1)
+        }
+        return result
+    }
+
+    fun dailyExpensesForRange(startDate: LocalDate, endDate: LocalDate): Flow<Map<LocalDate, Double>> {
         return expenseDao.getByDateRange(startDate.toEpochMillis(), endDate.toEpochMillis()).map { list ->
-            list.groupBy { entity ->
-                entity.date.toLocalDate().dayOfMonth
+            val grouped = list.groupBy { entity ->
+                entity.date.toLocalDate()
             }.mapValues { entry -> entry.value.sumOf { it.amount } }
+            fillMissingDates(grouped, startDate, endDate)
+        }
+    }
+
+    fun dailyIncomesForRange(startDate: LocalDate, endDate: LocalDate): Flow<Map<LocalDate, Double>> {
+        return incomeDao.getByDateRange(startDate.toEpochMillis(), endDate.toEpochMillis()).map { list ->
+            val grouped = list.groupBy { entity ->
+                entity.date.toLocalDate()
+            }.mapValues { entry -> entry.value.sumOf { it.amount } }
+            fillMissingDates(grouped, startDate, endDate)
         }
     }
 
@@ -348,7 +392,7 @@ class TrackerRepository(private val database: AppDatabase) {
         }
     }
 
-    fun dailyExpensesForMonth(): Flow<Map<Int, Double>> {
+    fun dailyExpensesForMonth(): Flow<Map<LocalDate, Double>> {
         val today = LocalDate.now()
         val startOfMonth = today.withDayOfMonth(1)
         return dailyExpensesForRange(startOfMonth, today)
@@ -360,18 +404,35 @@ class TrackerRepository(private val database: AppDatabase) {
         return expensesByCategoryForRange(startOfWeek, today)
     }
 
-    fun habitCompletionRate(): Flow<Float> {
+    fun transactionsForRange(startDate: LocalDate, endDate: LocalDate): Flow<List<Transaction>> {
+        return combine(
+            expenseDao.getByDateRange(startDate.toEpochMillis(), endDate.toEpochMillis()),
+            incomeDao.getByDateRange(startDate.toEpochMillis(), endDate.toEpochMillis())
+        ) { expenses, incomes ->
+            buildList<Transaction> {
+                expenses.forEach { add(it.toDomain().toTransaction()) }
+                incomes.forEach {
+                    val inc = Income(it.id, it.amount, it.note, it.date.toLocalDate())
+                    add(inc.toTransaction())
+                }
+            }.sortedByDescending { it.date }
+        }
+    }
+
+    fun habitCompletionRateByDays(startDate: LocalDate, endDate: LocalDate): Flow<Float> {
         return combine(
             habitDao.getAll(),
             completionDao.getAll()
         ) { habits, completions ->
             if (habits.isEmpty()) return@combine 0f
-            val today = LocalDate.now()
-            val startOfWeek = today.minusDays(today.dayOfWeek.value.toLong() - 1)
-            val completionsThisWeek = completions.count {
-                it.date >= startOfWeek.toEpochMillis() && it.date <= today.toEpochMillis()
+            val startMillis = startDate.toEpochMillis()
+            val endMillis = endDate.toEpochMillis()
+            val completionsInRange = completions.count {
+                it.date >= startMillis && it.date <= endMillis
             }
-            completionsThisWeek.toFloat() / (habits.size * 7).coerceAtLeast(1)
+            val daysInRange = endDate.toEpochDay() - startDate.toEpochDay() + 1
+            val totalPossible = habits.size * daysInRange.toInt()
+            completionsInRange.toFloat() / totalPossible.coerceAtLeast(1)
         }
     }
 
@@ -381,12 +442,18 @@ class TrackerRepository(private val database: AppDatabase) {
         val completedDates = completions.map { entity ->
             entity.date.toLocalDate()
         }
+        val completionValues = completions.filter { it.value != null }.associate { entity ->
+            entity.date.toLocalDate() to (entity.value ?: 0.0)
+        }
         return Habit(
             id = id,
             name = name,
             icon = icon,
             completedDates = completedDates,
-            targetDaysPerWeek = targetDaysPerWeek
+            targetDaysPerWeek = targetDaysPerWeek,
+            isNumeric = isNumeric,
+            unit = unit,
+            completionValues = completionValues
         )
     }
 

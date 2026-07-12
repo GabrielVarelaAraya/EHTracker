@@ -1,6 +1,5 @@
 package com.example.ehtracker.ui.components
 
-import android.app.DatePickerDialog
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -14,36 +13,40 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.SecondaryTabRow
 import androidx.compose.material3.Tab
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.example.ehtracker.ui.theme.CategoryIcon
+import com.example.ehtracker.ui.theme.HabitIcon
 import com.example.ehtracker.data.model.ExpenseCategory
 import com.example.ehtracker.data.model.HabitIcons
 import java.time.LocalDate
-import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -51,38 +54,29 @@ fun QuickAddSheet(
     onDismiss: () -> Unit,
     onAddExpense: (Double, ExpenseCategory, String, LocalDate) -> Unit,
     onAddIncome: (Double, String, LocalDate) -> Unit,
-    onAddHabit: (String, String, Int) -> Unit,
-    currencySymbol: String = "$",
-    lastExpenseAmount: Double = 0.0
+    onAddHabit: (String, String, Int, Boolean, String) -> Unit,
+    currencySymbol: String = "$"
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    var selectedTab by remember { mutableIntStateOf(0) }
+    val pagerState = rememberPagerState(pageCount = { 3 })
+    val scope = rememberCoroutineScope()
     val tabs = listOf("Expense", "Income", "Habit")
 
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surface,
-        shape = RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp)
+    EHTBottomSheet(
+        onDismissRequest = onDismiss
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 32.dp)
-        ) {
             SecondaryTabRow(
-                selectedTabIndex = selectedTab,
+                selectedTabIndex = pagerState.currentPage,
                 divider = {}
             ) {
                 tabs.forEachIndexed { index, title ->
                     Tab(
-                        selected = selectedTab == index,
-                        onClick = { selectedTab = index },
+                        selected = pagerState.currentPage == index,
+                        onClick = { scope.launch { pagerState.animateScrollToPage(index) } },
                         text = {
                             Text(
                                 text = title,
                                 style = MaterialTheme.typography.labelLarge.copy(
-                                    fontWeight = if (selectedTab == index) FontWeight.SemiBold else FontWeight.Normal
+                                    fontWeight = if (pagerState.currentPage == index) FontWeight.SemiBold else FontWeight.Normal
                                 )
                             )
                         },
@@ -92,28 +86,30 @@ fun QuickAddSheet(
                 }
             }
 
-            when (selectedTab) {
-                0 -> ExpenseTabContent(onAdd = onAddExpense, onDismiss = onDismiss, currencySymbol = currencySymbol, lastAmount = lastExpenseAmount)
-                1 -> IncomeTabContent(onAdd = onAddIncome, onDismiss = onDismiss, currencySymbol = currencySymbol)
-                2 -> HabitTabContent(onAdd = onAddHabit, onDismiss = onDismiss)
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxWidth().height(380.dp)
+            ) { page ->
+                when (page) {
+                    0 -> ExpenseTabContent(onAdd = onAddExpense, onDismiss = onDismiss, currencySymbol = currencySymbol)
+                    1 -> IncomeTabContent(onAdd = onAddIncome, onDismiss = onDismiss, currencySymbol = currencySymbol)
+                    2 -> HabitTabContent(onAdd = onAddHabit, onDismiss = onDismiss)
+                }
             }
         }
     }
-}
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ExpenseTabContent(
     onAdd: (Double, ExpenseCategory, String, LocalDate) -> Unit,
     onDismiss: () -> Unit,
-    currencySymbol: String = "$",
-    lastAmount: Double = 0.0
+    currencySymbol: String = "$"
 ) {
-    var amount by remember { mutableStateOf(if (lastAmount > 0) "%.2f".format(lastAmount) else "") }
+    var amount by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf(ExpenseCategory.FOOD) }
     var selectedDate by remember { mutableStateOf(LocalDate.now()) }
-    val context = LocalContext.current
 
     Column(
         modifier = Modifier
@@ -122,20 +118,7 @@ private fun ExpenseTabContent(
     ) {
         Spacer(modifier = Modifier.height(16.dp))
 
-        OutlinedTextField(
-            value = amount,
-            onValueChange = { amount = it.filter { c -> c.isDigit() || c == '.' } },
-            label = { Text("Amount") },
-            prefix = { Text(currencySymbol) },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-            singleLine = true,
-            shape = RoundedCornerShape(8.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                unfocusedBorderColor = MaterialTheme.colorScheme.outline
-            ),
-            modifier = Modifier.fillMaxWidth()
-        )
+        AmountField(value = amount, onValueChange = { amount = it }, currencySymbol = currencySymbol)
 
         Spacer(modifier = Modifier.height(12.dp))
 
@@ -161,90 +144,41 @@ private fun ExpenseTabContent(
                         .clickable { selectedCategory = cat }
                         .padding(horizontal = 10.dp, vertical = 6.dp)
                 ) {
-                    Text(
-                        text = "${cat.icon} ${cat.displayName}",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = if (isSelected) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CategoryIcon(emoji = cat.icon, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = cat.displayName,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = if (isSelected) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
         }
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        OutlinedTextField(
-            value = selectedDate.format(DateTimeFormatter.ofPattern("MMM d, yyyy")),
-            onValueChange = {},
-            readOnly = true,
-            label = { Text("Date") },
-            trailingIcon = {
-                Text(
-                    text = "Change",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier
-                        .padding(end = 8.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                        .clickable {
-                            DatePickerDialog(
-                                context,
-                                { _, year, month, day ->
-                                    selectedDate = LocalDate.of(year, month + 1, day)
-                                },
-                                selectedDate.year,
-                                selectedDate.monthValue - 1,
-                                selectedDate.dayOfMonth
-                            ).show()
-                        }
-                        .padding(horizontal = 4.dp, vertical = 2.dp)
-                )
-            },
-            shape = RoundedCornerShape(8.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                unfocusedBorderColor = MaterialTheme.colorScheme.outline
-            ),
-            modifier = Modifier.fillMaxWidth()
-        )
+        DateField(date = selectedDate, onDateChange = { selectedDate = it })
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        OutlinedTextField(
-            value = note,
-            onValueChange = { note = it },
-            label = { Text("Note (optional)") },
-            singleLine = true,
-            shape = RoundedCornerShape(8.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                unfocusedBorderColor = MaterialTheme.colorScheme.outline
-            ),
-            modifier = Modifier.fillMaxWidth()
-        )
+        AppTextField(value = note, onValueChange = { note = it }, label = "Note (optional)")
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.End
-        ) {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Spacer(modifier = Modifier.width(8.dp))
-            TextButton(
-                onClick = {
-                    val parsedAmount = amount.toDoubleOrNull()
-                    if (parsedAmount != null && parsedAmount > 0) {
-                        onAdd(parsedAmount, selectedCategory, note.ifBlank { selectedCategory.displayName }, selectedDate)
-                    }
-                },
-                enabled = amount.toDoubleOrNull() != null && (amount.toDoubleOrNull() ?: 0.0) > 0
-            ) {
-                Text("Add", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
-            }
-        }
+        FormActions(
+            onCancel = onDismiss,
+            onConfirm = {
+                val parsedAmount = amount.toDoubleOrNull()
+                if (parsedAmount != null && parsedAmount > 0) {
+                    onAdd(parsedAmount, selectedCategory, note.ifBlank { selectedCategory.displayName }, selectedDate)
+                }
+            },
+            confirmEnabled = amount.toDoubleOrNull() != null && (amount.toDoubleOrNull() ?: 0.0) > 0,
+            confirmText = "Add"
+        )
     }
 }
 
@@ -257,7 +191,6 @@ private fun IncomeTabContent(
     var amount by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
     var selectedDate by remember { mutableStateOf(LocalDate.now()) }
-    val context = LocalContext.current
 
     Column(
         modifier = Modifier
@@ -266,127 +199,53 @@ private fun IncomeTabContent(
     ) {
         Spacer(modifier = Modifier.height(16.dp))
 
-        OutlinedTextField(
-            value = amount,
-            onValueChange = { amount = it.filter { c -> c.isDigit() || c == '.' } },
-            label = { Text("Amount") },
-            prefix = { Text(currencySymbol) },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-            singleLine = true,
-            shape = RoundedCornerShape(8.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                unfocusedBorderColor = MaterialTheme.colorScheme.outline
-            ),
-            modifier = Modifier.fillMaxWidth()
-        )
+        AmountField(value = amount, onValueChange = { amount = it }, currencySymbol = currencySymbol)
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        OutlinedTextField(
-            value = selectedDate.format(DateTimeFormatter.ofPattern("MMM d, yyyy")),
-            onValueChange = {},
-            readOnly = true,
-            label = { Text("Date") },
-            trailingIcon = {
-                Text(
-                    text = "Change",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier
-                        .padding(end = 8.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                        .clickable {
-                            DatePickerDialog(
-                                context,
-                                { _, year, month, day ->
-                                    selectedDate = LocalDate.of(year, month + 1, day)
-                                },
-                                selectedDate.year,
-                                selectedDate.monthValue - 1,
-                                selectedDate.dayOfMonth
-                            ).show()
-                        }
-                        .padding(horizontal = 4.dp, vertical = 2.dp)
-                )
-            },
-            shape = RoundedCornerShape(8.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                unfocusedBorderColor = MaterialTheme.colorScheme.outline
-            ),
-            modifier = Modifier.fillMaxWidth()
-        )
+        DateField(date = selectedDate, onDateChange = { selectedDate = it })
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        OutlinedTextField(
-            value = note,
-            onValueChange = { note = it },
-            label = { Text("Note (optional)") },
-            singleLine = true,
-            shape = RoundedCornerShape(8.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                unfocusedBorderColor = MaterialTheme.colorScheme.outline
-            ),
-            modifier = Modifier.fillMaxWidth()
-        )
+        AppTextField(value = note, onValueChange = { note = it }, label = "Note (optional)")
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.End
-        ) {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Spacer(modifier = Modifier.width(8.dp))
-            TextButton(
-                onClick = {
-                    val parsedAmount = amount.toDoubleOrNull()
-                    if (parsedAmount != null && parsedAmount > 0) {
-                        onAdd(parsedAmount, note.ifBlank { "Income" }, selectedDate)
-                    }
-                },
-                enabled = amount.toDoubleOrNull() != null && (amount.toDoubleOrNull() ?: 0.0) > 0
-            ) {
-                Text("Add", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
-            }
-        }
+        FormActions(
+            onCancel = onDismiss,
+            onConfirm = {
+                val parsedAmount = amount.toDoubleOrNull()
+                if (parsedAmount != null && parsedAmount > 0) {
+                    onAdd(parsedAmount, note.ifBlank { "Income" }, selectedDate)
+                }
+            },
+            confirmEnabled = amount.toDoubleOrNull() != null && (amount.toDoubleOrNull() ?: 0.0) > 0,
+            confirmText = "Add"
+        )
     }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun HabitTabContent(
-    onAdd: (String, String, Int) -> Unit,
+    onAdd: (String, String, Int, Boolean, String) -> Unit,
     onDismiss: () -> Unit
 ) {
     var name by remember { mutableStateOf("") }
     var selectedIcon by remember { mutableStateOf(HabitIcons[0]) }
-    var targetDays by remember { mutableIntStateOf(7) }
+    var targetDays by remember { mutableStateOf(7) }
+    var isNumeric by remember { mutableStateOf(false) }
+    var unit by remember { mutableStateOf("") }
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
+            .verticalScroll(rememberScrollState())
     ) {
         Spacer(modifier = Modifier.height(16.dp))
 
-        OutlinedTextField(
-            value = name,
-            onValueChange = { name = it },
-            label = { Text("Habit name") },
-            singleLine = true,
-            shape = RoundedCornerShape(8.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                unfocusedBorderColor = MaterialTheme.colorScheme.outline
-            ),
-            modifier = Modifier.fillMaxWidth()
-        )
+        AppTextField(value = name, onValueChange = { name = it }, label = "Habit name")
 
         Spacer(modifier = Modifier.height(12.dp))
 
@@ -413,12 +272,49 @@ private fun HabitTabContent(
                         .clickable { selectedIcon = icon },
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(text = icon, style = MaterialTheme.typography.bodyLarge)
+                    HabitIcon(emoji = icon, modifier = Modifier.size(24.dp))
                 }
             }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Track numeric value (e.g. hours, kg, cups)",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Switch(
+                checked = isNumeric,
+                onCheckedChange = { isNumeric = it },
+                colors = SwitchDefaults.colors(
+                    checkedTrackColor = MaterialTheme.colorScheme.primary
+                )
+            )
+        }
+
+        if (isNumeric) {
+            Spacer(modifier = Modifier.height(8.dp))
+            OutlinedTextField(
+                value = unit,
+                onValueChange = { unit = it },
+                label = { Text("Unit (e.g. hours)") },
+                singleLine = true,
+                shape = RoundedCornerShape(8.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outline
+                ),
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
 
         Text(
             text = "Target: $targetDays days/week",
@@ -457,24 +353,15 @@ private fun HabitTabContent(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.End
-        ) {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Spacer(modifier = Modifier.width(8.dp))
-            TextButton(
-                onClick = {
-                    if (name.isNotBlank()) {
-                        onAdd(name.trim(), selectedIcon, targetDays)
-                    }
-                },
-                enabled = name.isNotBlank()
-            ) {
-                Text("Add", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
-            }
-        }
+        FormActions(
+            onCancel = onDismiss,
+            onConfirm = {
+                if (name.isNotBlank()) {
+                    onAdd(name.trim(), selectedIcon, targetDays, isNumeric, unit.trim())
+                }
+            },
+            confirmEnabled = name.isNotBlank(),
+            confirmText = "Add"
+        )
     }
 }

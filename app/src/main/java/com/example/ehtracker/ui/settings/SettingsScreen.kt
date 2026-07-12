@@ -2,6 +2,7 @@ package com.example.ehtracker.ui.settings
 
 import android.app.TimePickerDialog
 import androidx.compose.foundation.background
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -46,9 +47,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.ArrowDropUp
 import androidx.compose.ui.unit.dp
 import com.example.ehtracker.BuildConfig
 import com.example.ehtracker.data.model.Currency
+import com.example.ehtracker.ui.components.SectionHeader
+import com.example.ehtracker.ui.components.AppTextField
 import com.example.ehtracker.ui.theme.AmberPrimary
 import com.example.ehtracker.ui.theme.AmberPrimaryDark
 import com.example.ehtracker.ui.theme.CoralPrimary
@@ -103,6 +109,7 @@ fun SettingsScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp, vertical = 8.dp)
     ) {
@@ -118,19 +125,14 @@ fun SettingsScreen(
             }
             Text(
                 text = "Settings",
-                style = MaterialTheme.typography.displayLarge.copy(fontWeight = FontWeight.Bold),
+                style = MaterialTheme.typography.displayLarge,
                 color = MaterialTheme.colorScheme.onBackground
             )
         }
 
         Spacer(modifier = Modifier.height(20.dp))
 
-        Text(
-            text = "Palette",
-            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(bottom = 12.dp)
-        )
+        SectionHeader(text = "Palette", modifier = Modifier.padding(bottom = 12.dp))
 
         PaletteSelector(
             palettes = palettes,
@@ -144,12 +146,7 @@ fun SettingsScreen(
 
         Spacer(modifier = Modifier.height(20.dp))
 
-        Text(
-            text = "Mode",
-            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(bottom = 12.dp)
-        )
+        SectionHeader(text = "Mode", modifier = Modifier.padding(bottom = 12.dp))
 
         ThemeOption("System", "system", selectedMode) {
             val prefix = if (selectedPalette == "green") "" else "${selectedPalette}_"
@@ -166,12 +163,7 @@ fun SettingsScreen(
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        Text(
-            text = "Currency",
-            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(bottom = 12.dp)
-        )
+        SectionHeader(text = "Currency", modifier = Modifier.padding(bottom = 12.dp))
 
         CurrencySelector(
             selectedCurrency = currency,
@@ -180,12 +172,7 @@ fun SettingsScreen(
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        Text(
-            text = "Notification",
-            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(bottom = 12.dp)
-        )
+        SectionHeader(text = "Notification", modifier = Modifier.padding(bottom = 12.dp))
 
         Row(
             modifier = Modifier
@@ -255,12 +242,7 @@ fun SettingsScreen(
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        Text(
-            text = "About",
-            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(bottom = 12.dp)
-        )
+        SectionHeader(text = "About", modifier = Modifier.padding(bottom = 8.dp))
 
         Row(
             modifier = Modifier
@@ -391,22 +373,20 @@ private fun CurrencySelector(
         expanded = expanded,
         onExpandedChange = { expanded = it }
     ) {
-        OutlinedTextField(
+        AppTextField(
             value = "${selectedCurrency.symbol}  ${selectedCurrency.displayName} (${selectedCurrency.code})",
             onValueChange = {},
             readOnly = true,
-            label = { Text("Currency") },
-            trailingIcon = {
-                ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
+            label = "Currency",
+            trailing = {
+                Icon(
+                    imageVector = if (expanded) Icons.Filled.ArrowDropUp else Icons.Filled.ArrowDropDown,
+                    contentDescription = "Expand",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp)
+                )
             },
-            shape = RoundedCornerShape(8.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                unfocusedBorderColor = MaterialTheme.colorScheme.outline
-            ),
-            modifier = Modifier
-                .fillMaxWidth()
-                .menuAnchor(androidx.compose.material3.ExposedDropdownMenuAnchorType.PrimaryNotEditable)
+            modifier = Modifier.menuAnchor(androidx.compose.material3.ExposedDropdownMenuAnchorType.PrimaryNotEditable)
         )
         ExposedDropdownMenu(
             expanded = expanded,
@@ -427,6 +407,7 @@ private fun CurrencySelector(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     },
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                     onClick = {
                         onCurrencyChange(currency)
                         expanded = false

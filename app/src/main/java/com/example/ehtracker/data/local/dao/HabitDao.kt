@@ -26,8 +26,8 @@ interface HabitDao {
     suspend fun count(): Int
 
     @Transaction
-    suspend fun update(id: String, name: String, icon: String, targetDaysPerWeek: Int) {
+    suspend fun update(id: String, name: String, icon: String, targetDaysPerWeek: Int, isNumeric: Boolean = false, unit: String = "") {
         val existing = getById(id) ?: return
-        insert(existing.copy(name = name, icon = icon, targetDaysPerWeek = targetDaysPerWeek))
+        insert(existing.copy(name = name, icon = icon, targetDaysPerWeek = targetDaysPerWeek, isNumeric = isNumeric, unit = unit))
     }
 }

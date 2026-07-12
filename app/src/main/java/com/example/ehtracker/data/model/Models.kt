@@ -7,7 +7,10 @@ data class Habit(
     val name: String,
     val icon: String,
     val completedDates: List<LocalDate>,
-    val targetDaysPerWeek: Int = 7
+    val targetDaysPerWeek: Int = 7,
+    val isNumeric: Boolean = false,
+    val unit: String = "",
+    val completionValues: Map<LocalDate, Double> = emptyMap()
 ) {
     val currentStreak: Int
         get() {
@@ -29,11 +32,10 @@ data class Habit(
             val today = LocalDate.now()
             val startOfWeek = today.minusDays(today.dayOfWeek.value.toLong() - 1)
             val completedThisWeek = completedDates.count { it in startOfWeek..today }
-            return completedThisWeek.toFloat() / targetDaysPerWeek
+            val daysElapsed = today.toEpochDay() - startOfWeek.toEpochDay() + 1
+            return completedThisWeek.toFloat() / daysElapsed.toFloat()
         }
 
-    val isCompletedToday: Boolean
-        get() = completedDates.contains(LocalDate.now())
 }
 
 data class Expense(

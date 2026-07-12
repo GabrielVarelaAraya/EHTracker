@@ -14,10 +14,12 @@ import com.example.ehtracker.data.model.toExpense
 import com.example.ehtracker.data.model.toIncome
 import com.example.ehtracker.data.model.toTransaction
 import com.example.ehtracker.data.repository.TrackerRepository
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.launchIn
@@ -25,9 +27,14 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import java.time.LocalDate
 
+sealed class DeletedItem {
+    data class Expense(val id: String, val amount: Double, val category: ExpenseCategory, val note: String, val date: LocalDate) : DeletedItem()
+    data class Income(val id: String, val amount: Double, val note: String, val date: LocalDate) : DeletedItem()
+    data class Habit(val id: String, val name: String, val icon: String, val targetDaysPerWeek: Int) : DeletedItem()
+}
+
 data class LogsUiState(
     val isLoading: Boolean = true,
-    val isRefreshing: Boolean = false,
     val selectedTab: Int = 0,
     val searchQuery: String = "",
     val habits: List<Habit> = emptyList(),
@@ -41,8 +48,9 @@ data class LogsUiState(
     val transactions: List<Transaction>
         get() {
             val query = searchQuery
-            val filteredExpenses = if (query.isBlank()) expenses
-                else expenses.filter { it.note.contains(query, ignoreCase = true) || it.category.displayName.contains(query, ignoreCase = true) }
+            val filteredExpenses = expenses.filter { e ->
+                query.isBlank() || e.note.contains(query, ignoreCase = true) || e.category.displayName.contains(query, ignoreCase = true)
+            }
             val filteredIncomes = if (query.isBlank()) incomes
                 else incomes.filter { it.note.contains(query, ignoreCase = true) }
             return buildList {
@@ -98,16 +106,49 @@ class LogsViewModel(private val repository: TrackerRepository) : ViewModel() {
 
     fun updateSearch(query: String) { _searchInput.value = query }
 
+    private val _undoEvent = MutableSharedFlow<DeletedItem>()
+    val undoEvent: SharedFlow<DeletedItem> = _undoEvent.asSharedFlow()
+
     fun deleteExpense(id: String) {
-        viewModelScope.launch { repository.deleteExpense(id) }
+        viewModelScope.launch {
+            val expense = _uiState.value.expenses.find { it.id == id } ?: return@launch
+            try {
+                repository.deleteExpense(id)
+                _undoEvent.emit(DeletedItem.Expense(expense.id, expense.amount, expense.category, expense.note, expense.date))
+            } catch (e: Exception) { Log.e("LogsVM", "deleteExpense failed", e) }
+        }
     }
 
     fun deleteHabit(id: String) {
-        viewModelScope.launch { repository.deleteHabit(id) }
+        viewModelScope.launch {
+            val habit = _uiState.value.habits.find { it.id == id } ?: return@launch
+            try {
+                repository.deleteHabit(id)
+                _undoEvent.emit(DeletedItem.Habit(habit.id, habit.name, habit.icon, habit.targetDaysPerWeek))
+            } catch (e: Exception) { Log.e("LogsVM", "deleteHabit failed", e) }
+        }
     }
 
     fun deleteIncome(id: String) {
-        viewModelScope.launch { repository.deleteIncome(id) }
+        viewModelScope.launch {
+            val income = _uiState.value.incomes.find { it.id == id } ?: return@launch
+            try {
+                repository.deleteIncome(id)
+                _undoEvent.emit(DeletedItem.Income(income.id, income.amount, income.note, income.date))
+            } catch (e: Exception) { Log.e("LogsVM", "deleteIncome failed", e) }
+        }
+    }
+
+    fun undoDelete(item: DeletedItem) {
+        viewModelScope.launch {
+            try {
+                when (item) {
+                    is DeletedItem.Expense -> repository.addExpense(item.amount, item.category, item.note, item.date)
+                    is DeletedItem.Income -> repository.addIncome(item.amount, item.note, item.date)
+                    is DeletedItem.Habit -> repository.addHabit(item.name, item.icon, item.targetDaysPerWeek)
+                }
+            } catch (e: Exception) { Log.e("LogsVM", "undo failed", e) }
+        }
     }
 
     fun showEditExpense(expense: Expense) {
@@ -127,8 +168,10 @@ class LogsViewModel(private val repository: TrackerRepository) : ViewModel() {
 
     fun updateExpense(id: String, amount: Double, category: ExpenseCategory, note: String, date: LocalDate) {
         viewModelScope.launch {
-            repository.updateExpense(id, amount, category, note, date)
-            _uiState.update { it.copy(editingExpense = null) }
+            try {
+                repository.updateExpense(id, amount, category, note, date)
+                _uiState.update { it.copy(editingExpense = null) }
+            } catch (e: Exception) { Log.e("LogsVM", "updateExpense failed", e) }
         }
     }
 
@@ -140,10 +183,12 @@ class LogsViewModel(private val repository: TrackerRepository) : ViewModel() {
         _uiState.update { it.copy(editingHabit = null) }
     }
 
-    fun updateHabit(id: String, name: String, icon: String, targetDaysPerWeek: Int) {
+    fun updateHabit(id: String, name: String, icon: String, targetDaysPerWeek: Int, isNumeric: Boolean = false, unit: String = "") {
         viewModelScope.launch {
-            repository.updateHabit(id, name, icon, targetDaysPerWeek)
-            _uiState.update { it.copy(editingHabit = null) }
+            try {
+                repository.updateHabit(id, name, icon, targetDaysPerWeek, isNumeric, unit)
+                _uiState.update { it.copy(editingHabit = null) }
+            } catch (e: Exception) { Log.e("LogsVM", "updateHabit failed", e) }
         }
     }
 
@@ -157,16 +202,10 @@ class LogsViewModel(private val repository: TrackerRepository) : ViewModel() {
 
     fun updateIncome(id: String, amount: Double, note: String, date: LocalDate) {
         viewModelScope.launch {
-            repository.updateIncome(id, amount, note, date)
-            _uiState.update { it.copy(editingIncome = null) }
-        }
-    }
-
-    fun refresh() {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isRefreshing = true) }
-            delay(300)
-            _uiState.update { it.copy(isRefreshing = false) }
+            try {
+                repository.updateIncome(id, amount, note, date)
+                _uiState.update { it.copy(editingIncome = null) }
+            } catch (e: Exception) { Log.e("LogsVM", "updateIncome failed", e) }
         }
     }
 

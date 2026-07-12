@@ -10,12 +10,12 @@ import com.example.ehtracker.data.model.ExpenseCategory
 import com.example.ehtracker.data.model.Habit
 import com.example.ehtracker.data.model.Transaction
 import com.example.ehtracker.data.repository.TrackerRepository
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -36,13 +36,17 @@ data class DashboardUiState(
     val currency: Currency = Currency.USD,
     val showEditSavings: Boolean = false,
     val showAddSheet: Boolean = false,
-    val lastExpenseAmount: Double = 0.0
+    val showSuccessDialog: Boolean = false,
+    val successMessage: String = ""
 )
 
 class DashboardViewModel(private val repository: TrackerRepository) : ViewModel() {
 
     private val _uiState = MutableStateFlow(DashboardUiState())
     val uiState: StateFlow<DashboardUiState> = _uiState.asStateFlow()
+
+    private val _snackbarEvent = MutableSharedFlow<String>()
+    val snackbarEvent: SharedFlow<String> = _snackbarEvent.asSharedFlow()
 
     init {
         viewModelScope.launch {
@@ -51,18 +55,8 @@ class DashboardViewModel(private val repository: TrackerRepository) : ViewModel(
             }
         }
         viewModelScope.launch {
-            repository.todayTotalExpenses().collect { v ->
-                _uiState.update { it.copy(todayTotal = v) }
-            }
-        }
-        viewModelScope.launch {
-            repository.thisWeekExpenses().collect { v ->
-                _uiState.update { it.copy(weekTotal = v) }
-            }
-        }
-        viewModelScope.launch {
-            repository.thisMonthExpenses().collect { v ->
-                _uiState.update { it.copy(monthTotal = v) }
+            repository.expenseTotals().collect { totals ->
+                _uiState.update { it.copy(todayTotal = totals.today, weekTotal = totals.week, monthTotal = totals.month) }
             }
         }
         viewModelScope.launch {
@@ -90,9 +84,21 @@ class DashboardViewModel(private val repository: TrackerRepository) : ViewModel(
                 _uiState.update { it.copy(currency = v) }
             }
         }
+    }
+
+    fun refresh() {
         viewModelScope.launch {
-            repository.expenses().map { expenses -> expenses.firstOrNull()?.amount ?: 0.0 }.collect { v ->
-                _uiState.update { it.copy(lastExpenseAmount = v) }
+            _uiState.update { it.copy(isRefreshing = true) }
+            _uiState.update { it.copy(isRefreshing = false) }
+        }
+    }
+
+    fun setHabitValue(habitId: String, date: LocalDate, value: Double) {
+        viewModelScope.launch {
+            try { repository.setHabitValue(habitId, date, value) }
+            catch (e: Exception) {
+                Log.e(TAG, "setHabitValue failed", e)
+                _snackbarEvent.emit("Failed to update habit")
             }
         }
     }
@@ -100,7 +106,10 @@ class DashboardViewModel(private val repository: TrackerRepository) : ViewModel(
     fun toggleHabit(habitId: String, date: LocalDate) {
         viewModelScope.launch {
             try { repository.toggleHabitCompletion(habitId, date) }
-            catch (e: Exception) { Log.e(TAG, "toggleHabit failed", e) }
+            catch (e: Exception) {
+                Log.e(TAG, "toggleHabit failed", e)
+                _snackbarEvent.emit("Failed to update habit")
+            }
         }
     }
 
@@ -108,20 +117,24 @@ class DashboardViewModel(private val repository: TrackerRepository) : ViewModel(
         viewModelScope.launch {
             try {
                 repository.addExpense(amount, category, note, date)
-                _uiState.update { it.copy(showAddSheet = false) }
+                _uiState.update { it.copy(showAddSheet = false, showSuccessDialog = true, successMessage = "Expense added") }
+                _snackbarEvent.emit("Expense added")
             } catch (e: Exception) {
                 Log.e(TAG, "addExpense failed", e)
+                _snackbarEvent.emit("Failed to add expense")
             }
         }
     }
 
-    fun addHabit(name: String, icon: String, targetDays: Int = 7) {
+    fun addHabit(name: String, icon: String, targetDays: Int = 7, isNumeric: Boolean = false, unit: String = "") {
         viewModelScope.launch {
             try {
-                repository.addHabit(name, icon, targetDays)
-                _uiState.update { it.copy(showAddSheet = false) }
+                repository.addHabit(name, icon, targetDays, isNumeric, unit)
+                _uiState.update { it.copy(showAddSheet = false, showSuccessDialog = true, successMessage = "Habit added") }
+                _snackbarEvent.emit("Habit added")
             } catch (e: Exception) {
                 Log.e(TAG, "addHabit failed", e)
+                _snackbarEvent.emit("Failed to add habit")
             }
         }
     }
@@ -130,9 +143,11 @@ class DashboardViewModel(private val repository: TrackerRepository) : ViewModel(
         viewModelScope.launch {
             try {
                 repository.addIncome(amount, note, date)
-                _uiState.update { it.copy(showAddSheet = false) }
+                _uiState.update { it.copy(showAddSheet = false, showSuccessDialog = true, successMessage = "Income added") }
+                _snackbarEvent.emit("Income added")
             } catch (e: Exception) {
                 Log.e(TAG, "addIncome failed", e)
+                _snackbarEvent.emit("Failed to add income")
             }
         }
     }
@@ -143,24 +158,19 @@ class DashboardViewModel(private val repository: TrackerRepository) : ViewModel(
                 repository.setBalance(amount)
                 repository.setCurrency(currency)
                 _uiState.update { it.copy(showEditSavings = false) }
+                _snackbarEvent.emit("Settings saved")
             } catch (e: Exception) {
                 Log.e(TAG, "setSavings failed", e)
+                _snackbarEvent.emit("Failed to save settings")
             }
         }
     }
 
     fun showAdd() { _uiState.update { it.copy(showAddSheet = true) } }
     fun dismissAdd() { _uiState.update { it.copy(showAddSheet = false) } }
+    fun dismissSuccessDialog() { _uiState.update { it.copy(showSuccessDialog = false) } }
     fun showEditSavings() { _uiState.update { it.copy(showEditSavings = true) } }
     fun dismissEditSavings() { _uiState.update { it.copy(showEditSavings = false) } }
-
-    fun refresh() {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isRefreshing = true) }
-            delay(300)
-            _uiState.update { it.copy(isRefreshing = false) }
-        }
-    }
 
     class Factory(private val repository: TrackerRepository) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")

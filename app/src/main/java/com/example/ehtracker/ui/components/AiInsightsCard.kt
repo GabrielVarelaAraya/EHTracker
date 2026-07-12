@@ -37,7 +37,7 @@ fun AiInsightsCard(
         ) {
             Icon(
                 imageVector = Icons.Outlined.AutoAwesome,
-                contentDescription = null,
+                contentDescription = "Insights",
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.padding(end = 6.dp)
             )
