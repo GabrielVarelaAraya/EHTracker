@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">E&amp;HTracker</string>
+    <string name="widget_description">Balance and quick access to add expenses</string>
 </resources>

@@ -3,16 +3,21 @@ package com.example.ehtracker.ui.analytics
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.example.ehtracker.data.model.Category
 import com.example.ehtracker.data.model.Currency
-import com.example.ehtracker.data.model.ExpenseCategory
+import com.example.ehtracker.data.model.resolveCategory
 import com.example.ehtracker.data.model.Habit
 import com.example.ehtracker.data.repository.TrackerRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -51,6 +56,9 @@ class AnalyticsViewModel(private val repository: TrackerRepository) : ViewModel(
 
     private val _isLoading = MutableStateFlow(true)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
+
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
     private val _selectedRange = MutableStateFlow(DateRange.MONTH)
     val selectedRange: StateFlow<DateRange> = _selectedRange.asStateFlow()
@@ -125,16 +133,15 @@ class AnalyticsViewModel(private val repository: TrackerRepository) : ViewModel(
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val expensesByCategory: StateFlow<Map<ExpenseCategory, Double>> = _selectedRange.flatMapLatest { range ->
+    val expensesByCategory: StateFlow<Map<String, Double>> = _selectedRange.flatMapLatest { range ->
         repository.expensesByCategoryForRange(rangeStartFor(range), rangeEndFor(range))
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
+    val categories: StateFlow<List<Category>> = repository.categories()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     val rangeTotal: StateFlow<Double> = _selectedRange.flatMapLatest { range ->
         repository.expensesForRange(rangeStartFor(range), rangeEndFor(range)).map { list -> list.sumOf { it.amount } }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
-
-    val rangeIncomeTotal: StateFlow<Double> = _selectedRange.flatMapLatest { range ->
-        repository.dailyIncomesForRange(rangeStartFor(range), rangeEndFor(range)).map { map -> map.values.sum() }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
 
     val habitCompletionRate: StateFlow<Float> = _selectedRange.flatMapLatest { range ->
@@ -145,14 +152,12 @@ class AnalyticsViewModel(private val repository: TrackerRepository) : ViewModel(
     val monthTotal: StateFlow<Double> = repository.thisMonthExpenses()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
 
-    val weekTotal: StateFlow<Double> = repository.thisWeekExpenses()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
-
     val currency: StateFlow<Currency> = repository.currency()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), Currency.USD)
 
-    val budgetStatus: StateFlow<Map<ExpenseCategory, Pair<Double, Double>>> = repository.budgetStatus()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+    val budgetStatus: StateFlow<Map<String, Pair<Double, Double>>> = _selectedRange.flatMapLatest { range ->
+        repository.budgetStatus(rangeStartFor(range), rangeEndFor(range))
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
     val habitsSummary: StateFlow<List<HabitSummary>> = _selectedRange.flatMapLatest { range ->
         val today = LocalDate.now()
@@ -180,7 +185,7 @@ class AnalyticsViewModel(private val repository: TrackerRepository) : ViewModel(
         monthTotal
     ) { values: Array<Any> ->
         val totalVal = values[0] as Double
-        val categoryData = values[1] as Map<ExpenseCategory, Double>
+        val categoryData = values[1] as Map<String, Double>
         val cur = values[2] as Currency
         val range = values[3] as DateRange
         val habits = values[4] as List<HabitSummary>
@@ -193,7 +198,7 @@ class AnalyticsViewModel(private val repository: TrackerRepository) : ViewModel(
         if (topCategory != null && topCategory.value > 0) {
             insights.add(
                 AiInsight(
-                    "${topCategory.key.displayName} is your highest category at $sym${"%.0f".format(topCategory.value)} this ${range.label.lowercase()}.",
+                    "${resolveCategory(topCategory.key, emptyList()).name} is your highest category at $sym${"%.0f".format(topCategory.value)} this ${range.label.lowercase()}.",
                     InsightType.TIP
                 )
             )
@@ -234,17 +239,49 @@ class AnalyticsViewModel(private val repository: TrackerRepository) : ViewModel(
         _isLoading.value = false
     }
 
+    fun refresh() {
+        viewModelScope.launch {
+            _isRefreshing.value = true
+            val current = _selectedRange.value
+            _selectedRange.value = current
+            kotlinx.coroutines.delay(300)
+            _isRefreshing.value = false
+        }
+    }
+
+    private val _snackbarEvent = MutableSharedFlow<String>()
+    val snackbarEvent: SharedFlow<String> = _snackbarEvent.asSharedFlow()
+    private var pendingBudgetUndo: Pair<String, Double>? = null
+
     fun selectRange(range: DateRange) {
         _selectedRange.value = range
     }
 
-    fun setBudget(category: ExpenseCategory, limit: Double) {
+    fun setBudget(category: String, limit: Double) {
         viewModelScope.launch { repository.setBudget(category, limit) }
     }
 
-    fun deleteBudget(category: ExpenseCategory) {
-        viewModelScope.launch { repository.deleteBudget(category) }
+    fun deleteBudget(category: String) {
+        viewModelScope.launch {
+            val current = budgetStatus.value[category]?.second ?: 0.0
+            val limit = if (current > 0) current else repository.budgets().first().find { it.category == category }?.monthlyLimit ?: 0.0
+            if (limit > 0) pendingBudgetUndo = category to limit
+            repository.deleteBudget(category)
+            _snackbarEvent.emit("Budget deleted")
+        }
     }
+
+    fun undoBudgetDelete() {
+        val pending = pendingBudgetUndo ?: return
+        viewModelScope.launch {
+            repository.setBudget(pending.first, pending.second)
+            pendingBudgetUndo = null
+            _snackbarEvent.emit("Budget restored")
+        }
+    }
+
+    fun clearPendingUndo() { pendingBudgetUndo = null }
+    fun hasPendingBudgetUndo(): Boolean = pendingBudgetUndo != null
 
     class Factory(private val repository: TrackerRepository) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")

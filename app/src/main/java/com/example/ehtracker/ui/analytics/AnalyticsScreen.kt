@@ -1,8 +1,15 @@
 package com.example.ehtracker.ui.analytics
 
-import androidx.compose.foundation.Canvas
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,19 +21,23 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.animation.core.tween
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -35,10 +46,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Size
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.ehtracker.ui.components.SectionHeader
@@ -46,20 +53,19 @@ import com.example.ehtracker.ui.components.BudgetVsRealChart
 import com.example.ehtracker.ui.components.AiInsightsCard
 import com.example.ehtracker.ui.components.BudgetSetupSheet
 import com.example.ehtracker.ui.components.CategoryBar
+import com.example.ehtracker.ui.components.DonutChart
 import com.example.ehtracker.ui.components.MiniLineChart
 import com.example.ehtracker.ui.components.SavingsRateChart
 import com.example.ehtracker.ui.components.ProgressRing
 import com.example.ehtracker.ui.components.ShimmerBox
 import com.example.ehtracker.ui.components.ShimmerCard
 import com.example.ehtracker.ui.components.ShimmerInsightRow
-import com.example.ehtracker.ui.theme.CategoryBills
-import com.example.ehtracker.ui.theme.CategoryEntertainment
-import com.example.ehtracker.ui.theme.CategoryFood
-import com.example.ehtracker.ui.theme.CategoryHealth
+import androidx.compose.material.icons.filled.PieChart
+import com.example.ehtracker.ui.components.EmptyState
 import com.example.ehtracker.ui.theme.CategoryOther
-import com.example.ehtracker.ui.theme.CategoryShopping
-import com.example.ehtracker.ui.theme.CategoryTransport
-import com.example.ehtracker.data.model.ExpenseCategory
+import com.example.ehtracker.ui.theme.categoryColor
+import com.example.ehtracker.data.model.Category
+import com.example.ehtracker.data.model.resolveCategory
 import com.example.ehtracker.ui.theme.HabitIcon
 
 @Composable
@@ -70,22 +76,28 @@ fun AnalyticsScreen(viewModel: AnalyticsViewModel) {
     val savingsRateInsights by viewModel.savingsRateInsights.collectAsState()
     val categoryData by viewModel.expensesByCategory.collectAsState()
     val habitRate by viewModel.habitCompletionRate.collectAsState()
-    val rangeTotal by viewModel.rangeTotal.collectAsState()
     val selectedRange by viewModel.selectedRange.collectAsState()
     val habitsSummary by viewModel.habitsSummary.collectAsState()
     val currency by viewModel.currency.collectAsState()
     val budgetStatus by viewModel.budgetStatus.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val insights by viewModel.aiInsights.collectAsState()
+    val catalog by viewModel.categories.collectAsState()
     val sym = currency.symbol
     var showBudgetSetup by remember { mutableStateOf(false) }
 
+    val isRefreshing by viewModel.isRefreshing.collectAsState()
     Box(modifier = Modifier.fillMaxSize()) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 16.dp, vertical = 8.dp)
+        androidx.compose.material3.pulltorefresh.PullToRefreshBox(
+            isRefreshing = isRefreshing,
+            onRefresh = { viewModel.refresh() },
+            modifier = Modifier.fillMaxSize()
         ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+            ) {
             Text(
                 text = "Insights",
                 style = MaterialTheme.typography.displayLarge,
@@ -94,74 +106,27 @@ fun AnalyticsScreen(viewModel: AnalyticsViewModel) {
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Range selector
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(MaterialTheme.colorScheme.surface)
-                    .padding(4.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                DateRange.entries.forEach { range ->
-                    val isSelected = range == selectedRange
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(
-                                if (isSelected) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.surface
-                            )
-                            .clickable { viewModel.selectRange(range) }
-                            .padding(vertical = 8.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = range.label,
-                            style = MaterialTheme.typography.labelLarge.copy(
-                                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
-                            ),
-                            color = if (isSelected) MaterialTheme.colorScheme.onPrimary
-                            else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
+            RangeDropdown(
+                selected = selectedRange,
+                onSelect = viewModel::selectRange
+            )
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            val pagerState = rememberPagerState(
-                initialPage = DateRange.entries.indexOf(selectedRange),
-                pageCount = { DateRange.entries.size }
-            )
-            var isProgrammaticScroll by remember { mutableStateOf(false) }
-
-            LaunchedEffect(selectedRange) {
-                val targetPage = DateRange.entries.indexOf(selectedRange)
-                val distance = kotlin.math.abs(targetPage - pagerState.currentPage)
-                if (pagerState.currentPage != targetPage) {
-                    isProgrammaticScroll = true
-                    pagerState.animateScrollToPage(
-                        page = targetPage,
-                        animationSpec = tween(durationMillis = (distance * 250).coerceAtMost(600))
-                    )
-                    isProgrammaticScroll = false
-                }
-            }
-
-            LaunchedEffect(pagerState.currentPage) {
-                if (!isProgrammaticScroll) {
-                    viewModel.selectRange(DateRange.entries[pagerState.currentPage])
-                }
-            }
-
-            HorizontalPager(
-                state = pagerState,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-            ) { page ->
+            AnimatedContent(
+                targetState = selectedRange,
+                transitionSpec = {
+                    val forward = targetState.ordinal > initialState.ordinal
+                    val enter = slideInHorizontally(animationSpec = tween(280)) { width ->
+                        if (forward) width / 4 else -width / 4
+                    } + fadeIn(animationSpec = tween(280))
+                    val exit = slideOutHorizontally(animationSpec = tween(200)) { width ->
+                        if (forward) -width / 4 else width / 4
+                    } + fadeOut(animationSpec = tween(200))
+                    (enter togetherWith exit)
+                },
+                label = "rangeTransition"
+            ) { range ->
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -194,44 +159,14 @@ fun AnalyticsScreen(viewModel: AnalyticsViewModel) {
             ShimmerInsightRow()
         }
 
-        AnimatedVisibility(
-            visible = !isLoading,
-            enter = fadeIn(animationSpec = androidx.compose.animation.core.tween(400, delayMillis = 100))
-        ) {
+        if (!isLoading) {
             Column {
-            Row(
-                modifier = Modifier.fillMaxWidth()
-            ) {
                 Column(
                     modifier = Modifier
-                        .weight(1f)
+                        .fillMaxWidth()
                         .clip(RoundedCornerShape(8.dp))
                         .background(MaterialTheme.colorScheme.surface)
-                        .padding(12.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        text = "Habits",
-                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    ProgressRing(progress = habitRate, size = 80, strokeWidth = 6)
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "Completion",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(12.dp))
-
-                Column(
-                    modifier = Modifier
-                        .weight(1.2f)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(MaterialTheme.colorScheme.surface)
+                        .combinedClickable(onClick = {}, onLongClick = { showBudgetSetup = true })
                         .padding(12.dp)
                 ) {
                     Text(
@@ -241,77 +176,47 @@ fun AnalyticsScreen(viewModel: AnalyticsViewModel) {
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     val total = categoryData.values.sum().coerceAtLeast(1.0)
-                    val categoryColors = mapOf(
-                        ExpenseCategory.FOOD to CategoryFood,
-                        ExpenseCategory.TRANSPORT to CategoryTransport,
-                        ExpenseCategory.SHOPPING to CategoryShopping,
-                        ExpenseCategory.BILLS to CategoryBills,
-                        ExpenseCategory.HEALTH to CategoryHealth,
-                        ExpenseCategory.ENTERTAINMENT to CategoryEntertainment,
-                        ExpenseCategory.OTHER to CategoryOther
-                    )
                     if (categoryData.isEmpty()) {
-                        Text(
-                            text = "No data",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        EmptyState(
+                            icon = Icons.Filled.PieChart,
+                            title = "No spending data",
+                            subtitle = "Log expenses to see category breakdown, budgets and trends. Your donut chart will appear here once you have transactions in this range."
                         )
                     } else {
-                        categoryData.entries.sortedByDescending { it.value }.forEach { (cat, amt) ->
-                            CategoryBar(
-                                label = cat.displayName,
-                                amount = amt,
-                                fraction = (amt / total).toFloat(),
-                                color = categoryColors[cat] ?: CategoryOther,
-                                currencySymbol = sym
+                        val sortedEntries = categoryData.entries.sortedByDescending { it.value }
+                        val segments = sortedEntries.map { (cat, amt) ->
+                            categoryColor(cat) to (amt / total).toFloat()
+                        }
+                        Row(modifier = Modifier.fillMaxWidth()) {
+                            DonutChart(
+                                segments = segments,
+                                modifier = Modifier.size(120.dp),
+                                strokeWidth = 22,
+                                centerText = "$sym${"%.0f".format(total)}",
+                                centerSubText = "Total"
                             )
-                            val budget = budgetStatus[cat]
-                            if (budget != null) {
-                                val (spent, limit) = budget
-                                val budgetFraction = (spent / limit).coerceIn(0.0, 1.0).toFloat()
-                                val budgetColor = if (spent > limit) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-                                val trackColor = MaterialTheme.colorScheme.surfaceVariant
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(start = 70.dp, end = 0.dp, bottom = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Canvas(modifier = Modifier.weight(1f).height(4.dp)) {
-                                        drawRoundRect(
-                                            color = trackColor,
-                                            size = size,
-                                            cornerRadius = CornerRadius(2.dp.toPx())
-                                        )
-                                        drawRoundRect(
-                                            color = budgetColor,
-                                            size = Size(size.width * budgetFraction, size.height),
-                                            cornerRadius = CornerRadius(2.dp.toPx())
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text = "$sym${"%.0f".format(spent)}/$sym${"%.0f".format(limit)}",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = budgetColor
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                categoryData.entries.sortedByDescending { it.value }.forEach { (cat, amt) ->
+                                    CategoryBar(
+                                        label = resolveCategory(cat, catalog).name,
+                                        amount = amt,
+                                        fraction = (amt / total).toFloat(),
+                                        color = categoryColor(cat),
+                                        currencySymbol = sym
                                     )
                                 }
                             }
                         }
                     }
-                    Spacer(modifier = Modifier.height(4.dp))
-                    TextButton(
-                        onClick = { showBudgetSetup = true },
-                        modifier = Modifier.align(Alignment.End)
-                    ) {
-                        Text(
-                            text = if (budgetStatus.isEmpty()) "Set budgets" else "Edit budgets",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = if (budgetStatus.isEmpty()) "Hold to set budgets" else "Hold to edit budgets",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
-            }
 
             if (budgetStatus.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(16.dp))
@@ -321,6 +226,7 @@ fun AnalyticsScreen(viewModel: AnalyticsViewModel) {
                     budgets = budgetStatus,
                     actuals = categoryData,
                     currencySymbol = sym,
+                    catalog = catalog,
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(8.dp))
@@ -392,7 +298,7 @@ fun AnalyticsScreen(viewModel: AnalyticsViewModel) {
             if (habitsSummary.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(20.dp))
 
-                SectionHeader("Habits This ${selectedRange.label}")
+                SectionHeader("Habits This ${range.label}")
                 Spacer(modifier = Modifier.height(8.dp))
                 Column(
                     modifier = Modifier
@@ -446,23 +352,119 @@ fun AnalyticsScreen(viewModel: AnalyticsViewModel) {
             Spacer(modifier = Modifier.height(8.dp))
             AiInsightsCard(insights = insights)
 
+            Spacer(modifier = Modifier.height(20.dp))
+
+            SectionHeader("Habits")
+            Spacer(modifier = Modifier.height(8.dp))
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surface)
+                    .padding(12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "Habits",
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                ProgressRing(progress = habitRate, size = 80, strokeWidth = 6)
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Completion",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
             Spacer(modifier = Modifier.height(80.dp))
-        }
-        }
-        }
-        }
+            }
+            }
+            }
+            }
+            }
         }
     }
 
     if (showBudgetSetup) {
         val existingBudgets = budgetStatus.mapValues { it.value.second }
         BudgetSetupSheet(
+            categories = catalog,
             budgets = existingBudgets,
             currencySymbol = sym,
             onDismiss = { showBudgetSetup = false },
             onSave = { cat, limit -> viewModel.setBudget(cat, limit) },
             onDelete = { cat -> viewModel.deleteBudget(cat) }
         )
+    }
+}
+
+@Composable
+@OptIn(ExperimentalMaterial3Api::class)
+private fun RangeDropdown(
+    selected: DateRange,
+    onSelect: (DateRange) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = it }
+    ) {
+        OutlinedTextField(
+            value = selected.label,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text("Range") },
+            trailingIcon = {
+                ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
+            },
+            shape = RoundedCornerShape(8.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                unfocusedBorderColor = MaterialTheme.colorScheme.outline
+            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .menuAnchor(androidx.compose.material3.ExposedDropdownMenuAnchorType.PrimaryNotEditable)
+        )
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            shape = RoundedCornerShape(8.dp),
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+        ) {
+            DateRange.entries.forEach { range ->
+                val isSelected = range == selected
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            text = range.label,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (isSelected) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurface
+                        )
+                    },
+                    trailingIcon = {
+                        if (isSelected) {
+                            Icon(
+                                imageVector = Icons.Filled.Check,
+                                contentDescription = "Selected",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    },
+                    onClick = {
+                        onSelect(range)
+                        expanded = false
+                    }
+                )
+            }
+        }
     }
 }
 

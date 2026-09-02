@@ -24,6 +24,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.sp
 
 enum class Screen(val label: String, val icon: ImageVector) {
@@ -36,7 +37,9 @@ enum class Screen(val label: String, val icon: ImageVector) {
 fun BottomNavBar(
     currentPage: Int,
     onNavigate: (Int) -> Unit,
-    onAddClick: () -> Unit
+    onAddClick: () -> Unit,
+    showInsightsBadge: Boolean = false,
+    showHistoryBadge: Boolean = false
 ) {
     Column {
         HorizontalDivider(
@@ -55,20 +58,29 @@ fun BottomNavBar(
                 animationSpec = tween(300),
                 label = "navIconScale"
             )
+            val showBadge = when (screen) {
+                Screen.Dashboard -> false
+                Screen.Analytics -> showInsightsBadge
+                Screen.Logs -> showHistoryBadge
+            }
             NavigationBarItem(
                 icon = {
-                    Icon(
-                        screen.icon,
-                        contentDescription = screen.label,
-                        modifier = Modifier.size(24.dp).scale(iconScale)
-                    )
-                },
-                label = {
-                    Text(
-                        text = screen.label,
-                        fontSize = 10.sp,
-                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
-                    )
+                    androidx.compose.material3.BadgedBox(
+                        badge = {
+                            if (showBadge) {
+                                androidx.compose.material3.Badge(
+                                    containerColor = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(8.dp)
+                                )
+                            }
+                        }
+                    ) {
+                        Icon(
+                            screen.icon,
+                            contentDescription = screen.label,
+                            modifier = Modifier.size(26.dp).scale(iconScale)
+                        )
+                    }
                 },
                 selected = selected,
                 onClick = { onNavigate(index) },
@@ -77,7 +89,7 @@ fun BottomNavBar(
                     selectedTextColor = MaterialTheme.colorScheme.primary,
                     unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    indicatorColor = MaterialTheme.colorScheme.primaryContainer
+                    indicatorColor = Color.Transparent
                 )
             )
         }
@@ -86,13 +98,7 @@ fun BottomNavBar(
                 Icon(
                     Icons.Filled.Add,
                     contentDescription = "Add",
-                    modifier = Modifier.size(24.dp)
-                )
-            },
-            label = {
-                Text(
-                    text = "Add",
-                    fontSize = 10.sp,
+                    modifier = Modifier.size(26.dp)
                 )
             },
             selected = false,
@@ -102,7 +108,7 @@ fun BottomNavBar(
                 selectedTextColor = MaterialTheme.colorScheme.primary,
                 unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
                 unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                indicatorColor = MaterialTheme.colorScheme.primaryContainer
+                    indicatorColor = Color.Transparent
             )
         )
     }

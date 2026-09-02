@@ -166,23 +166,18 @@ fun DashboardScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                IconButton(onClick = onNavigateToSettings) {
-                    Icon(
-                        Icons.Filled.Settings,
-                        contentDescription = "Settings",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
             }
 
             Spacer(modifier = Modifier.height(20.dp))
 
             SavingsCard(
-                savings = state.savings,
                 totalExpenses = state.totalExpenses,
                 totalIncome = state.totalIncome,
                 currentBalance = state.currentBalance,
-                currencySymbol = sym
+                currencySymbol = sym,
+                goals = state.goals,
+                onGoalsClick = { viewModel.showGoalsSheet() },
+                isCompact = false
             )
 
             Spacer(modifier = Modifier.height(20.dp))

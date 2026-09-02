@@ -44,18 +44,24 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.ehtracker.ui.theme.CategoryIcon
 import com.example.ehtracker.ui.theme.HabitIcon
-import com.example.ehtracker.data.model.ExpenseCategory
+import com.example.ehtracker.data.model.Category
+import com.example.ehtracker.data.model.resolveCategory
 import com.example.ehtracker.data.model.HabitIcons
 import java.time.LocalDate
+import com.example.ehtracker.ui.components.CategoryPicker
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun QuickAddSheet(
     onDismiss: () -> Unit,
-    onAddExpense: (Double, ExpenseCategory, String, LocalDate) -> Unit,
+    categories: List<Category> = emptyList(),
+    onAddExpense: (Double, String, String, LocalDate, Boolean) -> Unit,
     onAddIncome: (Double, String, LocalDate) -> Unit,
     onAddHabit: (String, String, Int, Boolean, String) -> Unit,
-    currencySymbol: String = "$"
+    currencySymbol: String = "$",
+    onAddCategory: (String, String) -> Unit = { _, _ -> },
+    onUpdateCategory: (String, String, String) -> Unit = { _, _, _ -> },
+    onDeleteCategory: (String) -> Unit = {}
 ) {
     val pagerState = rememberPagerState(pageCount = { 3 })
     val scope = rememberCoroutineScope()
@@ -88,10 +94,18 @@ fun QuickAddSheet(
 
             HorizontalPager(
                 state = pagerState,
-                modifier = Modifier.fillMaxWidth().height(380.dp)
+                modifier = Modifier.fillMaxWidth().height(440.dp)
             ) { page ->
                 when (page) {
-                    0 -> ExpenseTabContent(onAdd = onAddExpense, onDismiss = onDismiss, currencySymbol = currencySymbol)
+                    0 -> ExpenseTabContent(
+                        onAdd = onAddExpense,
+                        onDismiss = onDismiss,
+                        currencySymbol = currencySymbol,
+                        categories = categories.filter { !it.isSavings },
+                        onAddCategory = onAddCategory,
+                        onUpdateCategory = onUpdateCategory,
+                        onDeleteCategory = onDeleteCategory
+                    )
                     1 -> IncomeTabContent(onAdd = onAddIncome, onDismiss = onDismiss, currencySymbol = currencySymbol)
                     2 -> HabitTabContent(onAdd = onAddHabit, onDismiss = onDismiss)
                 }
@@ -102,14 +116,19 @@ fun QuickAddSheet(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ExpenseTabContent(
-    onAdd: (Double, ExpenseCategory, String, LocalDate) -> Unit,
+    onAdd: (Double, String, String, LocalDate, Boolean) -> Unit,
     onDismiss: () -> Unit,
-    currencySymbol: String = "$"
+    currencySymbol: String = "$",
+    categories: List<Category> = emptyList(),
+    onAddCategory: (String, String) -> Unit = { _, _ -> },
+    onUpdateCategory: (String, String, String) -> Unit = { _, _, _ -> },
+    onDeleteCategory: (String) -> Unit = {}
 ) {
     var amount by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
-    var selectedCategory by remember { mutableStateOf(ExpenseCategory.FOOD) }
+    var selectedCategory by remember { mutableStateOf("FOOD") }
     var selectedDate by remember { mutableStateOf(LocalDate.now()) }
+    var recurring by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -118,7 +137,13 @@ private fun ExpenseTabContent(
     ) {
         Spacer(modifier = Modifier.height(16.dp))
 
-        AmountField(value = amount, onValueChange = { amount = it }, currencySymbol = currencySymbol)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f, fill = false)
+                .verticalScroll(rememberScrollState())
+        ) {
+            AmountField(value = amount, onValueChange = { amount = it }, currencySymbol = currencySymbol)
 
         Spacer(modifier = Modifier.height(12.dp))
 
@@ -128,35 +153,14 @@ private fun ExpenseTabContent(
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(modifier = Modifier.height(6.dp))
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            ExpenseCategory.entries.forEach { cat ->
-                val isSelected = cat == selectedCategory
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(
-                            if (isSelected) MaterialTheme.colorScheme.primaryContainer
-                            else MaterialTheme.colorScheme.surfaceVariant
-                        )
-                        .clickable { selectedCategory = cat }
-                        .padding(horizontal = 10.dp, vertical = 6.dp)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        CategoryIcon(emoji = cat.icon, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = cat.displayName,
-                            style = MaterialTheme.typography.labelMedium,
-                            color = if (isSelected) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-        }
+        CategoryPicker(
+            categories = categories,
+            selectedId = selectedCategory,
+            onSelect = { selectedCategory = it },
+            onAddCategory = onAddCategory,
+            onUpdateCategory = onUpdateCategory,
+            onDeleteCategory = onDeleteCategory
+        )
 
         Spacer(modifier = Modifier.height(12.dp))
 
@@ -166,18 +170,47 @@ private fun ExpenseTabContent(
 
         AppTextField(value = note, onValueChange = { note = it }, label = "Note (optional)")
 
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Recurring",
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = "Save as a one-tap button; won't log today",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Switch(
+                checked = recurring,
+                onCheckedChange = { recurring = it },
+                colors = SwitchDefaults.colors(checkedTrackColor = MaterialTheme.colorScheme.primary)
+            )
+        }
+
+        }
+
         Spacer(modifier = Modifier.height(16.dp))
 
         FormActions(
             onCancel = onDismiss,
             onConfirm = {
-                val parsedAmount = amount.toDoubleOrNull()
+                val parsedAmount = com.example.ehtracker.util.parseAmount(amount)
                 if (parsedAmount != null && parsedAmount > 0) {
-                    onAdd(parsedAmount, selectedCategory, note.ifBlank { selectedCategory.displayName }, selectedDate)
+                    val resolvedName = resolveCategory(selectedCategory, categories).name
+                    onAdd(parsedAmount, selectedCategory, note.ifBlank { resolvedName }, selectedDate, recurring)
                 }
             },
-            confirmEnabled = amount.toDoubleOrNull() != null && (amount.toDoubleOrNull() ?: 0.0) > 0,
-            confirmText = "Add"
+            confirmEnabled = com.example.ehtracker.util.parseAmount(amount) != null && (com.example.ehtracker.util.parseAmount(amount) ?: 0.0) > 0,
+            confirmText = if (recurring) "Save button" else "Add"
         )
     }
 }
@@ -191,6 +224,7 @@ private fun IncomeTabContent(
     var amount by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
     var selectedDate by remember { mutableStateOf(LocalDate.now()) }
+    val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
 
     Column(
         modifier = Modifier
@@ -214,12 +248,13 @@ private fun IncomeTabContent(
         FormActions(
             onCancel = onDismiss,
             onConfirm = {
-                val parsedAmount = amount.toDoubleOrNull()
+                val parsedAmount = com.example.ehtracker.util.parseAmount(amount)
                 if (parsedAmount != null && parsedAmount > 0) {
+                    haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.Confirm)
                     onAdd(parsedAmount, note.ifBlank { "Income" }, selectedDate)
                 }
             },
-            confirmEnabled = amount.toDoubleOrNull() != null && (amount.toDoubleOrNull() ?: 0.0) > 0,
+            confirmEnabled = com.example.ehtracker.util.parseAmount(amount) != null && (com.example.ehtracker.util.parseAmount(amount) ?: 0.0) > 0,
             confirmText = "Add"
         )
     }

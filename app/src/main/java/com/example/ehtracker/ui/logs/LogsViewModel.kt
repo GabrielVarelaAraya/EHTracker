@@ -4,16 +4,19 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.example.ehtracker.data.model.Category
 import com.example.ehtracker.data.model.Currency
 import com.example.ehtracker.data.model.Expense
-import com.example.ehtracker.data.model.ExpenseCategory
 import com.example.ehtracker.data.model.Habit
 import com.example.ehtracker.data.model.Income
 import com.example.ehtracker.data.model.Transaction
+import com.example.ehtracker.data.model.resolveCategory
 import com.example.ehtracker.data.model.toExpense
 import com.example.ehtracker.data.model.toIncome
 import com.example.ehtracker.data.model.toTransaction
 import com.example.ehtracker.data.repository.TrackerRepository
+import com.example.ehtracker.util.formatMoney
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,13 +31,28 @@ import kotlinx.coroutines.flow.update
 import java.time.LocalDate
 
 sealed class DeletedItem {
-    data class Expense(val id: String, val amount: Double, val category: ExpenseCategory, val note: String, val date: LocalDate) : DeletedItem()
+    data class Expense(val id: String, val amount: Double, val category: String, val note: String, val date: LocalDate) : DeletedItem()
     data class Income(val id: String, val amount: Double, val note: String, val date: LocalDate) : DeletedItem()
     data class Habit(val id: String, val name: String, val icon: String, val targetDaysPerWeek: Int) : DeletedItem()
 }
 
+enum class TransactionTypeFilter(val label: String) {
+    ALL("All"),
+    EXPENSES("Expenses"),
+    INCOMES("Income")
+}
+
+enum class DateRangePreset(val label: String) {
+    ALL_TIME("All time"),
+    THIS_MONTH("This month"),
+    LAST_MONTH("Last month"),
+    LAST_3_MONTHS("Last 3 months"),
+    CUSTOM("Custom")
+}
+
 data class LogsUiState(
     val isLoading: Boolean = true,
+    val isRefreshing: Boolean = false,
     val selectedTab: Int = 0,
     val searchQuery: String = "",
     val habits: List<Habit> = emptyList(),
@@ -43,16 +61,63 @@ data class LogsUiState(
     val currency: Currency = Currency.USD,
     val editingExpense: Expense? = null,
     val editingHabit: Habit? = null,
-    val editingIncome: Income? = null
+    val editingIncome: Income? = null,
+    val typeFilter: TransactionTypeFilter = TransactionTypeFilter.ALL,
+    val selectedCategories: Set<String> = emptySet(),
+    val datePreset: DateRangePreset = DateRangePreset.ALL_TIME,
+    val customStart: LocalDate? = null,
+    val customEnd: LocalDate? = null,
+    val categories: List<Category> = emptyList()
 ) {
+    val activeDateRange: ClosedRange<LocalDate>?
+        get() = when (datePreset) {
+            DateRangePreset.ALL_TIME -> null
+            DateRangePreset.THIS_MONTH -> {
+                val now = LocalDate.now()
+                now.withDayOfMonth(1)..now.withDayOfMonth(now.lengthOfMonth())
+            }
+            DateRangePreset.LAST_MONTH -> {
+                val last = LocalDate.now().minusMonths(1)
+                last.withDayOfMonth(1)..last.withDayOfMonth(last.lengthOfMonth())
+            }
+            DateRangePreset.LAST_3_MONTHS -> {
+                val now = LocalDate.now()
+                now.minusMonths(2).withDayOfMonth(1)..now.withDayOfMonth(now.lengthOfMonth())
+            }
+            DateRangePreset.CUSTOM ->
+                if (customStart != null && customEnd != null) customStart..customEnd else null
+        }
+
+    val activeFilterCount: Int
+        get() = (if (typeFilter != TransactionTypeFilter.ALL) 1 else 0) +
+                selectedCategories.size +
+                (if (datePreset != DateRangePreset.ALL_TIME) 1 else 0)
+
+    private fun matchesQuery(query: String, note: String, amount: Double?, categoryName: String?): Boolean {
+        if (query.isBlank()) return true
+        return note.contains(query, ignoreCase = true) ||
+                categoryName?.contains(query, ignoreCase = true) == true ||
+                (amount != null && (
+                    "%.2f".format(amount).contains(query) ||
+                    formatMoney(amount).contains(query)
+                ))
+    }
+
     val transactions: List<Transaction>
         get() {
-            val query = searchQuery
+            val query = searchQuery.trim()
+            val range = activeDateRange
             val filteredExpenses = expenses.filter { e ->
-                query.isBlank() || e.note.contains(query, ignoreCase = true) || e.category.displayName.contains(query, ignoreCase = true)
+                typeFilter != TransactionTypeFilter.INCOMES &&
+                        (selectedCategories.isEmpty() || e.category in selectedCategories) &&
+                        (range == null || !range.isEmpty() && e.date >= range.start && e.date <= range.endInclusive) &&
+                        matchesQuery(query, e.note, e.amount, resolveCategory(e.category, categories).name)
             }
-            val filteredIncomes = if (query.isBlank()) incomes
-                else incomes.filter { it.note.contains(query, ignoreCase = true) }
+            val filteredIncomes = incomes.filter { i ->
+                typeFilter != TransactionTypeFilter.EXPENSES &&
+                        (range == null || !range.isEmpty() && i.date >= range.start && i.date <= range.endInclusive) &&
+                        matchesQuery(query, i.note, i.amount, null)
+            }
             return buildList {
                 filteredExpenses.forEach { add(it.toTransaction()) }
                 filteredIncomes.forEach { add(it.toTransaction()) }
@@ -69,35 +134,58 @@ class LogsViewModel(private val repository: TrackerRepository) : ViewModel() {
     val uiState: StateFlow<LogsUiState> = _uiState.asStateFlow()
 
     private val _searchInput = MutableStateFlow("")
+    private val _refreshTrigger = MutableStateFlow(0L)
+
+    private var allHabits: List<Habit> = emptyList()
+
+    private fun applyHabitFilter(query: String, habits: List<Habit>): List<Habit> =
+        if (query.isBlank()) habits else habits.filter { it.name.contains(query, ignoreCase = true) }
 
     init {
         _searchInput
             .debounce(300)
-            .onEach { query -> _uiState.update { it.copy(searchQuery = query) } }
+            .onEach { query ->
+                _uiState.update { state ->
+                    state.copy(searchQuery = query, habits = applyHabitFilter(query, allHabits))
+                }
+            }
             .launchIn(viewModelScope)
 
         viewModelScope.launch {
-            repository.expenses().collect { expenses ->
-                _uiState.update { it.copy(expenses = expenses, isLoading = false) }
+            _refreshTrigger.collect {
+                repository.categories().collect { cats ->
+                    _uiState.update { state -> state.copy(categories = cats) }
+                }
             }
         }
+
         viewModelScope.launch {
-            repository.habitsWithCompletions().collect { habits ->
-                _uiState.update { state ->
-                    val query = state.searchQuery
-                    state.copy(habits = if (query.isBlank()) habits
-                        else habits.filter { it.name.contains(query, ignoreCase = true) })
+            _refreshTrigger.collect {
+                repository.expenses().collect { expenses ->
+                    _uiState.update { state -> state.copy(expenses = expenses, isLoading = false) }
                 }
             }
         }
         viewModelScope.launch {
-            repository.incomes().collect { incomes ->
-                _uiState.update { it.copy(incomes = incomes) }
+            _refreshTrigger.collect {
+                repository.habitsWithCompletions().collect { habits ->
+                    allHabits = habits
+                    _uiState.update { state -> state.copy(habits = applyHabitFilter(state.searchQuery, habits)) }
+                }
             }
         }
         viewModelScope.launch {
-            repository.currency().collect { currency ->
-                _uiState.update { it.copy(currency = currency) }
+            _refreshTrigger.collect {
+                repository.incomes().collect { incomes ->
+                    _uiState.update { state -> state.copy(incomes = incomes) }
+                }
+            }
+        }
+        viewModelScope.launch {
+            _refreshTrigger.collect {
+                repository.currency().collect { currency ->
+                    _uiState.update { state -> state.copy(currency = currency) }
+                }
             }
         }
     }
@@ -106,8 +194,86 @@ class LogsViewModel(private val repository: TrackerRepository) : ViewModel() {
 
     fun updateSearch(query: String) { _searchInput.value = query }
 
+    fun setTypeFilter(filter: TransactionTypeFilter) {
+        _uiState.update { it.copy(typeFilter = filter) }
+    }
+
+    fun toggleCategoryFilter(categoryName: String) {
+        _uiState.update { state ->
+            state.copy(
+                selectedCategories = if (categoryName in state.selectedCategories)
+                    state.selectedCategories - categoryName
+                else
+                    state.selectedCategories + categoryName
+            )
+        }
+    }
+
+    fun setDatePreset(preset: DateRangePreset) {
+        _uiState.update { it.copy(datePreset = preset) }
+    }
+
+    fun setCustomDateRange(start: LocalDate, end: LocalDate) {
+        val (s, e) = if (start.isAfter(end)) end to start else start to end
+        _uiState.update { it.copy(datePreset = DateRangePreset.CUSTOM, customStart = s, customEnd = e) }
+    }
+
+    fun refresh() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isRefreshing = true) }
+            _refreshTrigger.value = System.currentTimeMillis()
+            delay(300)
+            _uiState.update { it.copy(isRefreshing = false) }
+        }
+    }
+
+    fun clearFilters() {
+        _uiState.update {
+            it.copy(
+                typeFilter = TransactionTypeFilter.ALL,
+                selectedCategories = emptySet(),
+                datePreset = DateRangePreset.ALL_TIME,
+                customStart = null,
+                customEnd = null
+            )
+        }
+    }
+
     private val _undoEvent = MutableSharedFlow<DeletedItem>()
     val undoEvent: SharedFlow<DeletedItem> = _undoEvent.asSharedFlow()
+
+    private val _messages = MutableSharedFlow<String>()
+    val messages: SharedFlow<String> = _messages.asSharedFlow()
+
+    fun addCategory(name: String, icon: String) {
+        viewModelScope.launch {
+            when (repository.addCategory(name, icon)) {
+                TrackerRepository.CategoryResult.Success -> {}
+                TrackerRepository.CategoryResult.DuplicateName -> _messages.emit("A category with that name already exists")
+                else -> _messages.emit("Failed to create category")
+            }
+        }
+    }
+
+    fun updateCategory(id: String, name: String, icon: String) {
+        viewModelScope.launch {
+            when (repository.updateCategory(id, name, icon)) {
+                TrackerRepository.CategoryResult.Success -> _messages.emit("Category updated")
+                TrackerRepository.CategoryResult.DuplicateName -> _messages.emit("A category with that name already exists")
+                else -> _messages.emit("Failed to update category")
+            }
+        }
+    }
+
+    fun deleteCategory(id: String) {
+        viewModelScope.launch {
+            when (repository.deleteCategory(id)) {
+                TrackerRepository.CategoryResult.Success -> _messages.emit("Category deleted")
+                TrackerRepository.CategoryResult.InUse -> _messages.emit("Category is in use and cannot be deleted")
+                else -> _messages.emit("Failed to delete category")
+            }
+        }
+    }
 
     fun deleteExpense(id: String) {
         viewModelScope.launch {
@@ -166,7 +332,7 @@ class LogsViewModel(private val repository: TrackerRepository) : ViewModel() {
         _uiState.update { it.copy(editingExpense = null) }
     }
 
-    fun updateExpense(id: String, amount: Double, category: ExpenseCategory, note: String, date: LocalDate) {
+    fun updateExpense(id: String, amount: Double, category: String, note: String, date: LocalDate) {
         viewModelScope.launch {
             try {
                 repository.updateExpense(id, amount, category, note, date)

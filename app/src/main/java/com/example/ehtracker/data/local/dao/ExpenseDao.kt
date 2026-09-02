@@ -22,6 +22,12 @@ interface ExpenseDao {
     @Query("SELECT SUM(amount) FROM expenses")
     fun totalAll(): Flow<Double?>
 
+    @Query("SELECT SUM(amount) FROM expenses WHERE accountId = :accountId")
+    fun sumByAccount(accountId: String): Flow<Double?>
+
+    @Query("UPDATE expenses SET accountId = NULL WHERE accountId = :accountId")
+    suspend fun setAccountIdNull(accountId: String)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(expense: ExpenseEntity)
 

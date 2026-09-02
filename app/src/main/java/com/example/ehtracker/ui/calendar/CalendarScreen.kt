@@ -1,25 +1,44 @@
 package com.example.ehtracker.ui.calendar
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
+import com.example.ehtracker.util.formatMoney
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.ChevronLeft
 import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -29,17 +48,23 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.ehtracker.data.model.ExpenseCategory
 import com.example.ehtracker.data.model.Habit
 import com.example.ehtracker.data.model.Transaction
+import com.example.ehtracker.data.model.resolveCategory
+import com.example.ehtracker.ui.theme.CategoryIcon
 import com.example.ehtracker.ui.theme.HabitIcon
 import java.time.DayOfWeek
 import java.time.LocalDate
@@ -47,47 +72,100 @@ import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CalendarScreen(viewModel: CalendarViewModel) {
     val state by viewModel.uiState.collectAsState()
+    val weekStart by viewModel.currentWeekStart.collectAsState()
     val today = LocalDate.now()
 
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 8.dp)
-    ) {
-        item { MonthNavigationHeader(state.currentMonth, viewModel) }
-        item { Spacer(Modifier.height(4.dp)) }
-        item { ViewModeToggle(state.viewMode, viewModel) }
-        item { Spacer(Modifier.height(4.dp)) }
-        item { WeekdayHeaders() }
-        item { Spacer(Modifier.height(2.dp)) }
+    var dragAccumulator by remember { mutableFloatStateOf(0f) }
+    val swipeThreshold = 80f
 
-        if (state.viewMode == CalendarViewMode.MONTH) {
-            val weeks = computeMonthWeeks(state.currentMonth)
+    var swipeDirection by remember { mutableStateOf(0) }
+
+    val monthGrid: @Composable () -> Unit = {
+        val weeks = computeMonthWeeks(state.currentMonth)
+        Column {
+            WeekdayHeaders()
+            Spacer(Modifier.height(2.dp))
             weeks.forEach { week ->
-                item {
-                    WeekRow(
-                        week = week,
-                        summaries = state.dailySummaries,
-                        selectedDate = state.selectedDate,
-                        today = today,
-                        onSelectDate = { viewModel.selectDate(it) }
-                    )
-                }
-            }
-        } else {
-            item {
-                val start = today.minusDays(today.dayOfWeek.value.toLong() - 1)
-                val dates = (0..6).map { start.plusDays(it.toLong()) }
                 WeekRow(
-                    week = dates,
+                    week = week,
                     summaries = state.dailySummaries,
                     selectedDate = state.selectedDate,
                     today = today,
                     onSelectDate = { viewModel.selectDate(it) }
                 )
+            }
+        }
+    }
+
+    val weekGrid: @Composable () -> Unit = {
+        Column {
+            WeekdayHeaders()
+            Spacer(Modifier.height(2.dp))
+            val dates = (0..6).map { weekStart.plusDays(it.toLong()) }
+            WeekRow(
+                week = dates,
+                summaries = state.dailySummaries,
+                selectedDate = state.selectedDate,
+                today = today,
+                onSelectDate = { viewModel.selectDate(it) }
+            )
+        }
+    }
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.systemBars)
+            .padding(horizontal = 8.dp)
+            .pointerInput(state.viewMode) {
+                detectHorizontalDragGestures(
+                    onDragStart = { dragAccumulator = 0f },
+                    onDragEnd = {
+                        if (dragAccumulator > swipeThreshold) {
+                            swipeDirection = -1
+                            if (state.viewMode == CalendarViewMode.MONTH) viewModel.previousMonth()
+                            else viewModel.previousWeek()
+                        } else if (dragAccumulator < -swipeThreshold) {
+                            swipeDirection = 1
+                            if (state.viewMode == CalendarViewMode.MONTH) viewModel.nextMonth()
+                            else viewModel.nextWeek()
+                        }
+                        dragAccumulator = 0f
+                    },
+                    onHorizontalDrag = { _, dragAmount ->
+                        dragAccumulator += dragAmount
+                    }
+                )
+            }
+    ) {
+        item { Spacer(Modifier.height(64.dp)) }
+        item { MonthNavigationHeader(state, weekStart, viewModel) }
+        item { Spacer(Modifier.height(4.dp)) }
+        item { ViewModeToggle(state.viewMode, viewModel) }
+        item { Spacer(Modifier.height(4.dp)) }
+
+        item {
+            AnimatedContent(
+                targetState = state.viewMode,
+                transitionSpec = {
+                    if (targetState == CalendarViewMode.WEEK) {
+                        slideInVertically(tween(250)) { -it / 3 } + fadeIn(tween(250)) togetherWith
+                            slideOutVertically(tween(250)) { it / 3 } + fadeOut(tween(250))
+                    } else {
+                        slideInVertically(tween(250)) { it / 3 } + fadeIn(tween(250)) togetherWith
+                            slideOutVertically(tween(250)) { -it / 3 } + fadeOut(tween(250))
+                    }
+                },
+                label = "calendarGrid"
+            ) { mode ->
+                when (mode) {
+                    CalendarViewMode.MONTH -> monthGrid()
+                    CalendarViewMode.WEEK -> weekGrid()
+                }
             }
         }
 
@@ -165,22 +243,50 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
 }
 
 @Composable
-private fun MonthNavigationHeader(month: YearMonth, viewModel: CalendarViewModel) {
+private fun MonthNavigationHeader(state: CalendarUiState, weekStart: LocalDate, viewModel: CalendarViewModel) {
+    val isWeekMode = state.viewMode == CalendarViewMode.WEEK
+    val headerKey = if (isWeekMode) weekStart.toString() else state.currentMonth.toString()
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        IconButton(onClick = { viewModel.previousMonth() }) {
-            Icon(Icons.Outlined.ChevronLeft, contentDescription = "Previous month")
+        IconButton(onClick = {
+            if (isWeekMode) viewModel.previousWeek() else viewModel.previousMonth()
+        }) {
+            Icon(
+                Icons.Outlined.ChevronLeft,
+                contentDescription = "Previous",
+                tint = MaterialTheme.colorScheme.onSurface
+            )
         }
-        Text(
-            text = month.format(DateTimeFormatter.ofPattern("MMMM yyyy", Locale.getDefault())),
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-            color = MaterialTheme.colorScheme.onSurface
-        )
-        IconButton(onClick = { viewModel.nextMonth() }) {
-            Icon(Icons.Outlined.ChevronRight, contentDescription = "Next month")
+        AnimatedContent(
+            targetState = headerKey,
+            transitionSpec = {
+                slideInHorizontally(tween(200)) { it } + fadeIn(tween(200)) togetherWith
+                    slideOutHorizontally(tween(200)) { -it } + fadeOut(tween(200))
+            },
+            label = "headerTitle"
+        ) { key ->
+            Text(
+                text = if (isWeekMode) {
+                    val end = weekStart.plusDays(6)
+                    "${weekStart.format(DateTimeFormatter.ofPattern("MMM d"))} - ${end.format(DateTimeFormatter.ofPattern("MMM d, yyyy"))}"
+                } else {
+                    state.currentMonth.format(DateTimeFormatter.ofPattern("MMMM yyyy", Locale.getDefault()))
+                },
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        }
+        IconButton(onClick = {
+            if (isWeekMode) viewModel.nextWeek() else viewModel.nextMonth()
+        }) {
+            Icon(
+                Icons.Outlined.ChevronRight,
+                contentDescription = "Next",
+                tint = MaterialTheme.colorScheme.onSurface
+            )
         }
     }
 }
@@ -328,6 +434,11 @@ private fun DayDetailHeader(date: LocalDate, today: LocalDate) {
 @Composable
 private fun DaySummaryCard(summary: DaySummary, currency: com.example.ehtracker.data.model.Currency) {
     val sym = currency.symbol
+    val animatedNet by animateFloatAsState(
+        targetValue = summary.netAmount.toFloat(),
+        animationSpec = tween(600),
+        label = "day net"
+    )
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -358,9 +469,9 @@ private fun DaySummaryCard(summary: DaySummary, currency: com.example.ehtracker.
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(
-                    text = "${if (summary.netAmount >= 0) "+" else ""}$sym${"%.2f".format(summary.netAmount)}",
+                    text = "${if (animatedNet >= 0) "+" else ""}$sym${formatMoney(animatedNet.toDouble())}",
                     style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                    color = if (summary.netAmount >= 0) MaterialTheme.colorScheme.primary
+                    color = if (animatedNet >= 0) MaterialTheme.colorScheme.primary
                             else MaterialTheme.colorScheme.error
                 )
             }
@@ -373,12 +484,12 @@ private fun DaySummaryCard(summary: DaySummary, currency: com.example.ehtracker.
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
-                text = "Income: $sym${"%.2f".format(summary.totalIncome)}",
+                text = "Income: $sym${formatMoney(summary.totalIncome)}",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Text(
-                text = "Expenses: $sym${"%.2f".format(summary.totalExpenses)}",
+                text = "Expenses: $sym${formatMoney(summary.totalExpenses)}",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -419,10 +530,11 @@ private fun HabitToggleRow(
             contentAlignment = Alignment.Center
         ) {
             if (isCompleted) {
-                Text(
-                    text = "\u2713",
-                    color = MaterialTheme.colorScheme.onPrimary,
-                    fontSize = 12.sp
+                Icon(
+                    imageVector = Icons.Filled.Check,
+                    contentDescription = "Completed",
+                    tint = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.size(14.dp)
                 )
             }
         }
@@ -443,32 +555,45 @@ private fun TransactionRow(
     ) {
         when (transaction) {
             is Transaction.Expense -> {
-                val cat = transaction.category
-                Text(
-                    text = cat.icon,
-                    fontSize = 14.sp,
-                    modifier = Modifier.width(20.dp)
-                )
+                val cat = resolveCategory(transaction.category)
+                Box(
+                    modifier = Modifier.width(20.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CategoryIcon(
+                        emoji = cat.icon,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
                 Spacer(Modifier.width(6.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = transaction.note.ifBlank { cat.displayName },
+                        text = transaction.note.ifBlank { cat.name },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                 }
+                val isWithdrawal = transaction.amount < 0
                 Text(
-                    text = "-$sym${"%.2f".format(transaction.amount)}",
+                    text = if (isWithdrawal) "+$sym${formatMoney(-transaction.amount)}"
+                            else "-$sym${formatMoney(transaction.amount)}",
                     style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
-                    color = MaterialTheme.colorScheme.error
+                    color = if (isWithdrawal) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.error
                 )
             }
             is Transaction.Income -> {
-                Text(
-                    text = "\u2795",
-                    fontSize = 14.sp,
-                    modifier = Modifier.width(20.dp)
-                )
+                Box(
+                    modifier = Modifier.width(20.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Add,
+                        contentDescription = "Income",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
                 Spacer(Modifier.width(6.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
@@ -478,7 +603,7 @@ private fun TransactionRow(
                     )
                 }
                 Text(
-                    text = "+$sym${"%.2f".format(transaction.amount)}",
+                    text = "+$sym${formatMoney(transaction.amount)}",
                     style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
                     color = MaterialTheme.colorScheme.primary
                 )

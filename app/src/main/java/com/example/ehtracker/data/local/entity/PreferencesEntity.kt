@@ -9,5 +9,11 @@ data class PreferencesEntity(
     val themeMode: String = "system",
     val notificationHour: Int = 20,
     val notificationMinute: Int = 0,
-    val notificationsEnabled: Boolean = true
+    val notificationsEnabled: Boolean = true,
+    val biometricEnabled: Boolean = false,
+    val lastSelectedAccountId: String? = null,
+    val hasSeenOnboarding: Boolean = false,
+    val dashboardOrder: String? = null,
+    val dashboardHidden: String? = null,
+    val isCompactMode: Boolean = false
 )

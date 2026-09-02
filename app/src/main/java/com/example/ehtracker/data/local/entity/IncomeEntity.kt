@@ -12,5 +12,6 @@ data class IncomeEntity(
     @PrimaryKey val id: String,
     val amount: Double,
     val note: String,
-    val date: Long
+    val date: Long,
+    val accountId: String? = null
 )

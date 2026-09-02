@@ -37,7 +37,8 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.example.ehtracker.data.model.ExpenseCategory
+import com.example.ehtracker.data.model.Category
+import com.example.ehtracker.data.model.resolveCategory
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
@@ -276,150 +277,12 @@ fun MiniLineChart(
 }
 
 @Composable
-fun DonutChart(
-    totalExpenses: Double,
-    totalIncome: Double,
-    modifier: Modifier = Modifier,
-    currencySymbol: String = "$"
-) {
-    val total = totalExpenses + totalIncome
-    val expSweep = if (total > 0) (totalExpenses / total * 360).toFloat() else 0f
-    val incSweep = if (total > 0) (totalIncome / total * 360).toFloat() else 0f
-    val primaryColor = MaterialTheme.colorScheme.primary
-    val tertiaryColor = MaterialTheme.colorScheme.tertiary
-    val onSurfaceColor = MaterialTheme.colorScheme.onSurface
-
-    Row(
-        modifier = modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Canvas(modifier = Modifier.size(100.dp)) {
-            val strokeW = 20.dp.toPx()
-            val arcSize = Size(size.width - strokeW, size.height - strokeW)
-            val topLeft = Offset(strokeW / 2f, strokeW / 2f)
-
-            drawArc(
-                color = primaryColor,
-                startAngle = -90f,
-                sweepAngle = expSweep,
-                useCenter = false,
-                topLeft = topLeft,
-                size = arcSize,
-                style = Stroke(width = strokeW, cap = StrokeCap.Butt)
-            )
-            if (incSweep > 0f) {
-                drawArc(
-                    color = tertiaryColor,
-                    startAngle = -90f + expSweep,
-                    sweepAngle = incSweep,
-                    useCenter = false,
-                    topLeft = topLeft,
-                    size = arcSize,
-                    style = Stroke(width = strokeW, cap = StrokeCap.Butt)
-                )
-            }
-        }
-        Spacer(modifier = Modifier.width(16.dp))
-        Column {
-            Text(
-                text = "${currencySymbol}${formatCompact(total)}",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                color = onSurfaceColor
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(modifier = Modifier.size(8.dp).background(primaryColor, RoundedCornerShape(2.dp)))
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(
-                    text = "Expenses: $currencySymbol${formatCompact(totalExpenses)}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            Spacer(modifier = Modifier.height(4.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(modifier = Modifier.size(8.dp).background(tertiaryColor, RoundedCornerShape(2.dp)))
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(
-                    text = "Income: $currencySymbol${formatCompact(totalIncome)}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun IncomeVsExpensesChart(
-    expenses: Map<LocalDate, Double>,
-    incomes: Map<LocalDate, Double>,
-    modifier: Modifier = Modifier,
-    currencySymbol: String = "$"
-) {
-    val allKeys = (expenses.keys + incomes.keys).sorted().toSet()
-    val maxVal = maxOf(
-        expenses.values.maxOrNull() ?: 1.0,
-        incomes.values.maxOrNull() ?: 1.0,
-        1.0
-    )
-    val primaryColor = MaterialTheme.colorScheme.primary
-    val tertiaryColor = MaterialTheme.colorScheme.tertiary
-
-    Column(modifier = modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(modifier = Modifier.size(8.dp).background(primaryColor, RoundedCornerShape(2.dp)))
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("Expenses", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(modifier = Modifier.size(8.dp).background(tertiaryColor, RoundedCornerShape(2.dp)))
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("Income", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-        Spacer(modifier = Modifier.height(8.dp))
-        Canvas(modifier = Modifier.fillMaxWidth().height(120.dp)) {
-            val w = size.width
-            val h = size.height
-            val pad = 4.dp.toPx()
-            val chartH = h - pad * 2
-            if (allKeys.isEmpty()) return@Canvas
-            val barWidth = w / allKeys.size
-            allKeys.forEachIndexed { i, day ->
-                val expVal = expenses[day] ?: 0.0
-                val incVal = incomes[day] ?: 0.0
-                val expH = ((expVal / maxVal) * chartH).toFloat()
-                val incH = ((incVal / maxVal) * chartH).toFloat()
-                val x = i * barWidth + barWidth * 0.15f
-                val bw = barWidth * 0.35f
-                drawRoundRect(
-                    color = primaryColor,
-                    topLeft = Offset(x, h - pad - expH),
-                    size = Size(bw, expH),
-                    cornerRadius = CornerRadius(2.dp.toPx())
-                )
-                drawRoundRect(
-                    color = tertiaryColor,
-                    topLeft = Offset(x + barWidth * 0.5f, h - pad - incH),
-                    size = Size(bw, incH),
-                    cornerRadius = CornerRadius(2.dp.toPx())
-                )
-            }
-        }
-    }
-}
-
-@Composable
 fun BudgetVsRealChart(
-    budgets: Map<ExpenseCategory, Pair<Double, Double>>,
-    actuals: Map<ExpenseCategory, Double>,
+    budgets: Map<String, Pair<Double, Double>>,
+    actuals: Map<String, Double>,
     modifier: Modifier = Modifier,
-    currencySymbol: String = "$"
+    currencySymbol: String = "$",
+    catalog: List<Category> = emptyList()
 ) {
     val categoriesWithBudget = budgets.keys.filter { cat ->
         val (_, limit) = budgets[cat] ?: return@filter false
@@ -446,7 +309,7 @@ fun BudgetVsRealChart(
                 Column(modifier = Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            text = cat.displayName,
+                            text = resolveCategory(cat, catalog).name,
                             style = MaterialTheme.typography.labelSmall,
                             color = onSurfaceColor
                         )
@@ -718,10 +581,91 @@ fun CategoryBar(
             )
         }
         Spacer(modifier = Modifier.width(8.dp))
+        val animatedAmount by animateFloatAsState(
+            targetValue = amount.toFloat(),
+            animationSpec = tween(600),
+            label = "category amount"
+        )
         Text(
-            text = "$currencySymbol${formatCompact(amount, decimals = 3, threshold = 100_000.0)}",
+            text = "$currencySymbol${formatCompact(animatedAmount.toDouble(), decimals = 3, threshold = 100_000.0)}",
             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
             color = MaterialTheme.colorScheme.onSurface
         )
+    }
+}
+
+@Composable
+fun DonutChart(
+    segments: List<Pair<Color, Float>>,
+    modifier: Modifier = Modifier,
+    size: Int = 140,
+    strokeWidth: Int = 20,
+    emptyColor: Color = MaterialTheme.colorScheme.surfaceVariant,
+    centerText: String = "",
+    centerSubText: String = "",
+) {
+    val totalFraction = segments.fold(0f) { acc, seg -> acc + seg.second }.coerceIn(0f, 1f)
+    var animatedSweep by remember { mutableStateOf(0f) }
+    LaunchedEffect(segments) {
+        animatedSweep = totalFraction
+    }
+    val animSweep by animateFloatAsState(
+        targetValue = animatedSweep,
+        animationSpec = tween(700),
+        label = "donut sweep"
+    )
+
+    Box(
+        modifier = modifier.size(size.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Canvas(modifier = Modifier.size(size.dp)) {
+            val stroke = strokeWidth.dp.toPx()
+            val arcSize = Size(this.size.width - stroke, this.size.height - stroke)
+            val topLeft = Offset(stroke / 2, stroke / 2)
+
+            drawArc(
+                color = emptyColor,
+                startAngle = -90f,
+                sweepAngle = 360f,
+                useCenter = false,
+                topLeft = topLeft,
+                size = arcSize,
+                style = Stroke(width = stroke, cap = StrokeCap.Butt)
+            )
+
+            val gap = 2f
+            var startAngle = -90f
+            for ((color, fraction) in segments) {
+                val sweep = 360f * fraction * animSweep
+                if (sweep <= 0f) continue
+                drawArc(
+                    color = color,
+                    startAngle = startAngle + gap / 2,
+                    sweepAngle = (sweep - gap).coerceAtLeast(0f),
+                    useCenter = false,
+                    topLeft = topLeft,
+                    size = arcSize,
+                    style = Stroke(width = stroke, cap = StrokeCap.Butt)
+                )
+                startAngle += sweep
+            }
+        }
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            if (centerText.isNotEmpty()) {
+                Text(
+                    text = centerText,
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+            if (centerSubText.isNotEmpty()) {
+                Text(
+                    text = centerSubText,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
     }
 }

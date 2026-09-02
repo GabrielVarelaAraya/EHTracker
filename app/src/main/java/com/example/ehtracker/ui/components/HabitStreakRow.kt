@@ -1,7 +1,9 @@
 package com.example.ehtracker.ui.components
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -52,6 +54,7 @@ fun HabitStreakRow(
     habits: List<Habit>,
     onToggle: (String, LocalDate) -> Unit,
     onSetValue: (String, LocalDate, Double) -> Unit = { _, _, _ -> },
+    onHabitLongPress: (Habit) -> Unit = {},
     weekDates: List<LocalDate>,
     modifier: Modifier = Modifier
 ) {
@@ -106,7 +109,14 @@ fun HabitStreakRow(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 4.dp),
+                        .padding(vertical = 4.dp)
+                        .combinedClickable(
+                            onClick = {},
+                            onLongClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                onHabitLongPress(habit)
+                            }
+                        ),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 HabitIcon(
@@ -160,8 +170,7 @@ fun HabitStreakRow(
                                     style = MaterialTheme.typography.labelSmall.copy(
                                         fontWeight = FontWeight.SemiBold
                                     ),
-                                    color = if (hasValue) MaterialTheme.colorScheme.onPrimary
-                                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    color = MaterialTheme.colorScheme.onSurface,
                                     textAlign = TextAlign.Center
                                 )
                             }

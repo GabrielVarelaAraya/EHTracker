@@ -32,6 +32,8 @@ fun categoryDrawableId(emoji: String): Int? {
         "\uD83D\uDC8A" -> R.drawable.local_pharmacy
         "\uD83C\uDFAC" -> R.drawable.movie
         "\uD83D\uDCE6" -> R.drawable.inventory2
+        "\uD83C\uDF5C" -> R.drawable.food
+        "\uD83D\uDCB3" -> R.drawable.card
         else -> null
     }
 }
@@ -61,5 +63,47 @@ fun CategoryIcon(emoji: String, modifier: Modifier = Modifier, contentDescriptio
         )
     } else {
         androidx.compose.material3.Text(text = emoji, modifier = modifier)
+    }
+}
+
+fun accountDrawableId(icon: String): Int? {
+    return when (icon) {
+        "credit_card" -> R.drawable.credit_card
+        "card" -> R.drawable.card
+        "assignment" -> R.drawable.assignment
+        "inventory2" -> R.drawable.inventory2
+        "receipt" -> R.drawable.receipt
+        "directions_car" -> R.drawable.directions_car
+        "food" -> R.drawable.food
+        "shopping_cart" -> R.drawable.shopping_cart
+        "coffee" -> R.drawable.coffee
+        "fitness_center" -> R.drawable.fitness_center
+        "menu_book" -> R.drawable.menu_book
+        "music_note" -> R.drawable.music_note
+        "movie" -> R.drawable.movie
+        "local_pharmacy" -> R.drawable.local_pharmacy
+        "lunch_dining" -> R.drawable.lunch_dining
+        "waving_hand" -> R.drawable.waving_hand
+        else -> null
+    }
+}
+
+@Composable
+fun AccountIcon(
+    icon: String,
+    modifier: Modifier = Modifier,
+    contentDescription: String? = null,
+    tint: androidx.compose.ui.graphics.Color = androidx.compose.material3.LocalContentColor.current
+) {
+    val id = accountDrawableId(icon) ?: categoryDrawableId(icon) ?: habitDrawableId(icon)
+    if (id != null) {
+        androidx.compose.material3.Icon(
+            painter = painterResource(id = id),
+            contentDescription = contentDescription,
+            modifier = modifier,
+            tint = tint
+        )
+    } else {
+        androidx.compose.material3.Text(text = icon, modifier = modifier)
     }
 }

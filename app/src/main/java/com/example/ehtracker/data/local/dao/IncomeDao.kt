@@ -16,6 +16,12 @@ interface IncomeDao {
     @Query("SELECT SUM(amount) FROM incomes")
     fun totalAll(): Flow<Double?>
 
+    @Query("SELECT SUM(amount) FROM incomes WHERE accountId = :accountId")
+    fun sumByAccount(accountId: String): Flow<Double?>
+
+    @Query("UPDATE incomes SET accountId = NULL WHERE accountId = :accountId")
+    suspend fun setAccountIdNull(accountId: String)
+
     @Query("SELECT * FROM incomes WHERE date BETWEEN :startMillis AND :endMillis ORDER BY date")
     fun getByDateRange(startMillis: Long, endMillis: Long): Flow<List<IncomeEntity>>
 

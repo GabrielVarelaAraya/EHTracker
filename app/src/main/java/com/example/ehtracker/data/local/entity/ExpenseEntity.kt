@@ -13,5 +13,7 @@ data class ExpenseEntity(
     val amount: Double,
     val category: String,
     val note: String,
-    val date: Long
+    val date: Long,
+    val accountId: String? = null,
+    val goalId: String? = null
 )

@@ -50,8 +50,11 @@ class CalendarViewModel(private val repository: TrackerRepository) : ViewModel()
     private val _currentMonth = MutableStateFlow(YearMonth.now())
     private val _viewMode = MutableStateFlow(CalendarViewMode.MONTH)
     private val _selectedDate = MutableStateFlow<LocalDate?>(null)
+    private val _currentWeekStart = MutableStateFlow(weekStartOf(LocalDate.now()))
     private val _uiState = MutableStateFlow(CalendarUiState())
     val uiState: StateFlow<CalendarUiState> = _uiState.asStateFlow()
+
+    val currentWeekStart: StateFlow<LocalDate> = _currentWeekStart.asStateFlow()
 
     private val habits: StateFlow<List<Habit>> = repository.habitsWithCompletions()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -142,12 +145,35 @@ class CalendarViewModel(private val repository: TrackerRepository) : ViewModel()
         _currentMonth.value = _currentMonth.value.plusMonths(1)
     }
 
+    fun previousWeek() {
+        val newStart = weekStartOf(_currentWeekStart.value.minusWeeks(1))
+        _currentWeekStart.value = newStart
+        _currentMonth.value = YearMonth.from(newStart)
+    }
+
+    fun nextWeek() {
+        val newStart = weekStartOf(_currentWeekStart.value.plusWeeks(1))
+        _currentWeekStart.value = newStart
+        _currentMonth.value = YearMonth.from(newStart)
+    }
+
     fun selectDate(date: LocalDate) {
         _selectedDate.value = if (_selectedDate.value == date) null else date
     }
 
     fun setViewMode(mode: CalendarViewMode) {
         _viewMode.value = mode
+        _uiState.update { it.copy(viewMode = mode) }
+        if (mode == CalendarViewMode.WEEK) {
+            val start = weekStartOf(LocalDate.now())
+            _currentWeekStart.value = start
+            _currentMonth.value = YearMonth.from(start)
+        }
+    }
+
+    companion object {
+        private fun weekStartOf(date: LocalDate): LocalDate =
+            date.minusDays((date.dayOfWeek.value - 1).toLong())
     }
 
     class Factory(private val repository: TrackerRepository) : ViewModelProvider.Factory {

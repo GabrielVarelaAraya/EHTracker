@@ -22,6 +22,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -29,13 +30,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import java.time.Instant
 import java.time.LocalDate
-import java.time.ZoneId
+import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 
 @Composable
@@ -74,15 +77,33 @@ fun AmountField(
     onValueChange: (String) -> Unit,
     currencySymbol: String = "$",
     modifier: Modifier = Modifier,
-    label: String = "Amount"
+    label: String = "Amount",
+    autoFocus: Boolean = false
 ) {
+    val focusRequester = androidx.compose.ui.focus.FocusRequester()
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        if (autoFocus) {
+            kotlinx.coroutines.delay(150)
+            try { focusRequester.requestFocus() } catch (_: Exception) {}
+        }
+    }
     AppTextField(
         value = value,
-        onValueChange = { onValueChange(it.filter { c -> c.isDigit() || (c == '.' && !it.contains('.')) }) },
+        onValueChange = { input ->
+            var dotSeen = false
+            onValueChange(input.filter { c ->
+                when {
+                    c.isDigit() -> true
+                    c == '.' && !dotSeen -> { dotSeen = true; true }
+                    c == ',' || c == ' ' -> true
+                    else -> false
+                }
+            })
+        },
         label = label,
         prefix = { Text(currencySymbol) },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-        modifier = modifier
+        modifier = modifier.then(if (autoFocus) Modifier.focusRequester(focusRequester) else Modifier)
     )
 }
 
@@ -119,7 +140,7 @@ fun DateField(
 
     if (showDatePicker) {
         val datePickerState = rememberDatePickerState(
-            initialSelectedDateMillis = date.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+            initialSelectedDateMillis = date.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
         )
         DatePickerDialog(
             onDismissRequest = { showDatePicker = false },
@@ -127,7 +148,7 @@ fun DateField(
                 TextButton(onClick = {
                     datePickerState.selectedDateMillis?.let { millis ->
                         onDateChange(
-                            Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).toLocalDate()
+                            Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate()
                         )
                     }
                     showDatePicker = false
@@ -183,30 +204,4 @@ fun SectionHeader(
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = modifier
     )
-}
-
-@Composable
-fun EmptyStateBox(
-    icon: @Composable () -> Unit,
-    message: String,
-    modifier: Modifier = Modifier
-) {
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(MaterialTheme.colorScheme.surface)
-            .padding(vertical = 24.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            icon()
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = message,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-    }
 }
